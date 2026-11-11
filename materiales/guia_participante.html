@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratorio de Agentes en Databricks · Guía del participante</title>
+<style>
+  :root { --navy:#0B2026; --teal:#1B5162; --lava:#FF3621; --oat:#F9F7F4; --gris:#5A6F77; --borde:#DCE0E2; --verde:#00A972; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:var(--navy); background:#fff; line-height:1.6; }
+  header { background:var(--navy); color:#fff; padding:40px 24px 32px; }
+  header .marco, main { max-width:860px; margin:0 auto; }
+  header h1 { margin:0 0 6px; font-size:30px; }
+  header p { margin:0; color:#C9D3D6; }
+  .chips { margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { background:rgba(255,255,255,.12); border-radius:999px; padding:3px 12px; font-size:13px; }
+  main { padding:28px 24px 60px; }
+  h2 { font-size:21px; border-bottom:2px solid var(--teal); padding-bottom:6px; margin-top:36px; }
+  h3 { font-size:16px; color:var(--teal); margin:22px 0 6px; }
+  .tarjetas { display:flex; gap:14px; flex-wrap:wrap; }
+  .tarjeta { flex:1 1 240px; border:1px solid var(--borde); border-top:4px solid var(--teal); border-radius:12px; padding:14px 16px; }
+  .tarjeta.b { border-top-color:var(--verde); }
+  .tarjeta h3 { margin-top:0; }
+  pre { background:var(--navy); color:#E6F5EE; padding:14px 16px; border-radius:10px; overflow-x:auto; font-size:13px; line-height:1.5; }
+  code { font-family:"SF Mono",Menlo,Consolas,monospace; font-size:.92em; }
+  p code, li code, td code { background:var(--oat); padding:1px 5px; border-radius:4px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:8px 10px; border-top:1px solid var(--borde); vertical-align:top; }
+  th { background:var(--oat); border-top:none; }
+  .nota { border:1px solid var(--borde); border-left:4px solid var(--teal); background:var(--oat); border-radius:10px; padding:12px 16px; margin:14px 0; }
+  .alerta { border-left-color:var(--lava); }
+  .check { list-style:none; padding-left:0; }
+  .check li::before { content:"☐ "; color:var(--teal); font-weight:700; }
+</style>
+</head>
+<body>
+<header><div class="marco">
+  <h1>Laboratorio de Agentes en Databricks</h1>
+  <p>Guía del participante · La Tinka · 26 de noviembre de 2026</p>
+  <div class="chips"><span class="chip">Tools</span><span class="chip">MCP</span><span class="chip">Agent Bricks</span><span class="chip">Unity Gateway</span><span class="chip">2–3 horas</span></div>
+</div></header>
+<main>
+
+<p>En el laboratorio construirás, paso a paso, un agente que responde preguntas sobre la mesa de servicio de TI: primero sus <b>tools</b> (una función de Unity Catalog y el Genie que ya conoces), después tu propio <b>servidor MCP</b>, luego el <b>agente</b> con memoria y, al final, su <b>gobierno</b> con Unity Gateway.</p>
+
+<h2>1. Elige cómo harás el Lab 3</h2>
+<div class="tarjetas">
+  <div class="tarjeta">
+    <h3>Versión A · con tu laptop</h3>
+    <p>Construyes el agente con el <b>Agent Bricks CLI</b> en tu terminal y lo pruebas en local antes de desplegarlo. Es el flujo de un desarrollador en su día a día.</p>
+    <p><b>Necesitas</b> instalar tres cosas (sección 2).</p>
+  </div>
+  <div class="tarjeta b">
+    <h3>Versión B · solo navegador</h3>
+    <p>El mismo agente y el mismo CLI, pero corriendo dentro de un notebook de Databricks. No instalas nada.</p>
+    <p><b>Necesitas</b> solo haber entrado una vez al workspace antes del día.</p>
+  </div>
+</div>
+<div class="nota">Si tu laptop corporativa no permite instalar programas o tiene proxy, elige la <b>versión B</b>. Los Labs 1, 2 y 4 son iguales en ambas.</div>
+
+<h2>2. Solo versión A: prepara tu laptop</h2>
+<h3>2.1 Python 3.12+ y uv</h3>
+<pre># macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.12
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv python install 3.12</pre>
+
+<h3>2.2 Databricks CLI con login OAuth</h3>
+<pre># macOS
+brew tap databricks/tap && brew install databricks
+# Windows
+winget install Databricks.DatabricksCLI
+
+databricks auth login --host &lt;URL del workspace&gt; --profile tinka</pre>
+<p>Se abre el navegador para iniciar sesión. Los tokens personales (PAT) <b>no sirven</b> para este laboratorio: usa el login OAuth.</p>
+
+<h3>2.3 Agent Bricks CLI (Beta), versión 0.9.0</h3>
+<pre>uv tool install databricks-agentbricks==0.9.0
+agentbricks --version
+agentbricks login --profile tinka</pre>
+
+<h3>2.4 Verificación</h3>
+<ul class="check">
+  <li><code>python3 --version</code> muestra 3.12 o superior</li>
+  <li><code>databricks current-user me --profile tinka</code> muestra tu correo</li>
+  <li><code>agentbricks --version</code> muestra 0.9.0</li>
+  <li>Un editor de código (VS Code, Cursor u otro)</li>
+</ul>
+
+<h2>3. El día del laboratorio</h2>
+<ol>
+  <li>Entra al workspace y abre <b>Workspace → Users → tu correo → Lab Agentes La Tinka</b>. Si no la ves, usa <code>Workspace → Shared → Lab Agentes La Tinka</code>.</li>
+  <li>Abre <code>00 - Kickoff y verificación del ambiente</code>, conecta <b>Serverless</b> y corre las celdas. Todo debe salir en ✓.</li>
+  <li>Sigue los notebooks en orden: <code>01</code> → <code>02</code> → <code>03A</code> o <code>03B</code> → <code>04</code>.</li>
+</ol>
+
+<table>
+  <tr><th>Notebook</th><th>Qué construyes</th><th>Tiempo</th></tr>
+  <tr><td><code>01 - Lab 1</code></td><td>Tu UC function, el Genie y Databricks SQL como tools vía MCP; un agente mínimo</td><td>30 min</td></tr>
+  <tr><td><code>02 - Lab 2</code></td><td>Tu servidor MCP <code>mcp-&lt;usuario&gt;</code> en Databricks Apps</td><td>40 min</td></tr>
+  <tr><td><code>03A / 03B - Lab 3</code></td><td>Tu agente desplegado con tools, sandbox, memoria y trazas</td><td>50 min</td></tr>
+  <tr><td><code>04 - Lab 4</code></td><td>Rate limit, fallback y guardrails de PII sobre el modelo de tu agente</td><td>25 min</td></tr>
+  <tr><td><code>05 - Opcional</code></td><td>Evaluación del agente con MLflow</td><td>45 min</td></tr>
+</table>
+
+<h2>4. Si algo falla</h2>
+<table>
+  <tr><th>Síntoma</th><th>Qué hacer</th></tr>
+  <tr><td>Un chequeo del notebook 00 sale en ✗</td><td>Avísale al instructor antes de seguir</td></tr>
+  <tr><td><code>agentbricks</code> no se instala o no conecta</td><td>Pasa a la versión B del Lab 3</td></tr>
+  <tr><td>Tu agente no ve las tools de tu MCP</td><td>Corre la celda "Dar acceso a tu MCP" del Lab 3</td></tr>
+  <tr><td>Te atrasaste</td><td>Las soluciones están en la carpeta <code>soluciones</code></td></tr>
+</table>
+<div class="nota alerta">Varias funciones del laboratorio están en <b>Beta</b> (Agent Bricks CLI, Sandbox, memoria de agentes, service policies). Úsalas para prototipos; no son aún una ruta productiva.</div>
+</main>
+</body>
+</html>

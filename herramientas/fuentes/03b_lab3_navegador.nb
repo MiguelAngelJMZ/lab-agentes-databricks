@@ -1,0 +1,327 @@
+#! 03B - Lab 3 - Agente custom desde el navegador
+=== md
+# Lab 3 (versión B) · Agente custom desde el navegador
+#### Duración: 50 minutos
+=== md
+## Panorama
+
+Es **el mismo agente** que la versión A, construido con el **mismo Agent Bricks CLI**, pero sin instalar nada en tu laptop: el CLI corre **dentro de este notebook serverless** y el proyecto vive en una carpeta de tu workspace, donde lo editas con el editor de Databricks.
+
+| Tool | De dónde viene |
+|---|---|
+| `incidencias_abiertas` | Tu UC function (Lab 1) |
+| Genie "Mesa de servicio" | Genie Agent |
+| `run_code` | Databricks Sandbox |
+| `calcular_sla`, `estado_plataforma_juego` | Tu MCP en Apps (Lab 2) |
+| `remember`, `recall` | Memoria de largo plazo |
+
+Lo único que cambia frente a la versión A: no hay `agentbricks dev` (no hay "local"); pruebas directamente el agente desplegado.
+
+::nota ¿Y la plantilla de Apps? | También existe la ruta <b>+ New → App → Agents → Custom Agent (OpenAI SDK)</b>. Usa MLflow AgentServer, que la documentación marca como <i>legacy</i>; para agentes nuevos se recomienda el Agent Bricks CLI, por eso lo usamos aquí también.
+=== md
+### Objetivos de aprendizaje
+
+- **Ejecutar** el Agent Bricks CLI desde un notebook y **describir** lo que declara `agent.toml`.
+- **Ubicar** en el proyecto dónde vive cada pieza del agente y **decidir** dónde se agrega cada tipo de tool.
+- **Agregar** al agente tu UC function, el Genie, el sandbox y tu MCP del Lab 2.
+- **Editar** el código del agente en el workspace y **redeployar**.
+- **Leer** una traza en MLflow y **demostrar** que el agente recuerda una preferencia entre sesiones.
+=== pip
+uv "mlflow>=3.5"
+=== py
+dbutils.library.restartPython()
+=== run ./Includes/Setup-Lab
+=== md
+### Setup: el CLI dentro del notebook
+::pill DEMO
+
+`agentbricks(...)` ejecuta el CLI con `uv` en un entorno aislado (no toca las librerías del notebook) y con tu identidad. La celda también descarga el Databricks CLI, que el Agent Bricks CLI usa por debajo. Tu proyecto queda en `/Workspace/Users/<tú>/lab-agentes/<agente>`.
+=== py
+import io, platform, shutil, subprocess, sys, zipfile
+import requests
+
+UV = shutil.which("uv") or os.path.join(os.path.dirname(sys.executable), "uv")
+
+# El Agent Bricks CLI usa por debajo el Databricks CLI: lo descargamos en /tmp (≈ 15 MB, una vez por sesión)
+VERSION_CLI = "1.24.0"
+VERSION_AGENTBRICKS = "0.9.0"  # versión validada para el lab
+CARPETA_CLI = "/tmp/databricks-cli"
+if not os.path.exists(f"{CARPETA_CLI}/databricks"):
+    arq = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
+    zip_cli = requests.get(f"https://github.com/databricks/cli/releases/download/v{VERSION_CLI}/"
+                           f"databricks_cli_{VERSION_CLI}_linux_{arq}.zip", timeout=120)
+    zip_cli.raise_for_status()
+    zipfile.ZipFile(io.BytesIO(zip_cli.content)).extractall(CARPETA_CLI)
+    os.chmod(f"{CARPETA_CLI}/databricks", 0o755)
+CARPETA_TRABAJO = f"/Workspace/Users/{YO}/lab-agentes"
+PROYECTO = f"{CARPETA_TRABAJO}/{AGENTE}"
+os.makedirs(CARPETA_TRABAJO, exist_ok=True)
+
+
+def agentbricks(*args, cwd=None, timeout=900):
+    """Corre `agentbricks <args>` y muestra su salida."""
+    # Sin las credenciales del notebook (el CLI usa DATABRICKS_HOST/TOKEN), pero conservando la versión
+    # del runtime: MLflow la necesita para configurar el tracing.
+    conservar = ("DATABRICKS_ENV_VERSION", "DATABRICKS_RUNTIME_VERSION")
+    entorno = {k: v for k, v in os.environ.items()
+               if k in conservar or not k.startswith(("DATABRICKS_", "SPARK", "PYSPARK"))}
+    entorno.update(DATABRICKS_HOST=HOST, DATABRICKS_TOKEN=token(), AGENTBRICKS_DISABLE_AGENT_HINT="1",
+                   NO_COLOR="1", TERM="dumb", COLUMNS="110", UV_CACHE_DIR="/tmp/uv-cache",
+                   PATH=f"{CARPETA_CLI}:{os.environ['PATH']}")
+    p = subprocess.run([UV, "tool", "run", "--quiet", "--from", f"databricks-agentbricks=={VERSION_AGENTBRICKS}", "agentbricks", *args],
+                       cwd=cwd or PROYECTO, env=entorno, capture_output=True, text=True, timeout=timeout)
+    salida = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", p.stdout + p.stderr)
+    salida = "\n".join(l for l in salida.splitlines() if not re.match(r"^\s*[⠁-⣿]\s*[\d:]*\s*$", l))
+    print(salida.strip()[-4000:])
+    if p.returncode != 0:
+        raise RuntimeError(f"agentbricks {' '.join(args)} terminó con código {p.returncode}")
+
+
+agentbricks("--version", cwd=CARPETA_TRABAJO)
+=== md
+## A. Crear el proyecto
+=== md
+#### A.1 `init`
+::pill DEMO
+
+Crea el proyecto LangGraph con chat UI y declara los stores de memoria y sesiones y el experimento de trazas. Si ya existe, no hace nada.
+=== py
+if os.path.exists(f"{PROYECTO}/agent.toml"):
+    print(f"• El proyecto {PROYECTO} ya existe")
+else:
+    agentbricks("init", "--framework", "langgraph", AGENTE, cwd=CARPETA_TRABAJO)
+=== md
+#### A.2 Qué creó `init`
+::pill LECTURA
+
+`init` creó un proyecto completo en tu workspace: el agente, un servidor HTTP durable, un chat en el navegador, tests y la configuración de despliegue. Corre la celda para ver el árbol de tu proyecto. Parece mucho, pero **solo cuatro piezas (★) definen tu agente**. El resto es infraestructura que no necesitas tocar (el árbol omite las carpetas ocultas, como `.agents/`).
+=== py
+ESTRELLA = {"agent.toml", "agent/agent.py", "agent/mcps.py", "agent/tools"}
+
+
+def mostrar_proyecto(raiz=PROYECTO):
+    lineas = []
+    for actual, carpetas, archivos in os.walk(raiz):
+        carpetas[:] = sorted(c for c in carpetas if not c.startswith((".", "__")))
+        rel = os.path.relpath(actual, raiz)
+        nivel = 0 if rel == "." else rel.count(os.sep) + 1
+        if rel != ".":
+            lineas.append(("    " * (nivel - 1)) + f"{os.path.basename(actual)}/" + ("  ★" if rel in ESTRELLA else ""))
+        for a in sorted(f for f in archivos if not f.endswith(".pyc")):
+            ruta = a if rel == "." else f"{rel}/{a}"
+            lineas.append(("    " * nivel) + a + ("  ★" if ruta in ESTRELLA else ""))
+    displayHTML("<pre style='background:#0B2026;color:#E6F5EE;padding:14px 16px;border-radius:10px;font-size:13px;line-height:1.45'>"
+                + f"{os.path.basename(raiz)}/\n" + "\n".join("    " + l for l in lineas) + "</pre>")
+
+
+mostrar_proyecto()
+=== md
+| Archivo | Qué es | ¿Lo tocas? |
+|---|---|---|
+| **`agent.toml`** | Qué recursos de Databricks usa el agente: tools, memoria, sesiones, trazas, modelo | **Sí: es el núcleo**, casi siempre vía comandos del CLI |
+| **`agent/agent.py`** | El agente: prompt de sistema (`SYSTEM_PROMPT`), armado de tools, modelo y `run_agent` | **Sí**: el prompt y la lógica |
+| **`agent/mcps.py`** | MCP propios que no se declaran en `agent.toml` (ver A.6) | Sí, si usas MCP propios |
+| **`agent/tools/`** | Tools en Python: cualquier función con `@tool` en un archivo de esta carpeta se registra sola | Sí, si quieres tools locales |
+| `app.yaml` | Variables de entorno del despliegue | A veces: el script del lab escribe aquí la URL de tu MCP |
+| `.env.example`, `.env` | Variables para correr el agente en una laptop con `agentbricks dev` | No en esta versión |
+| `pyproject.toml` | Dependencias de Python | Si agregas librerías |
+| `runtime/` | Servidor HTTP (`/api/invocations`), streaming, recuperación ante fallos y la UI | No |
+| `ui/` | El chat del navegador | No |
+| `tests/` | Pruebas de la plantilla | Opcional |
+| `AGENTS.md`, `CLAUDE.md`, `.agents/skills/` | Instrucciones para asistentes de código (Claude Code, Cursor…), para que te ayuden a editar el proyecto | No |
+| `README.md`, `AGENTKIT_CONTRACT.md`, `CHAT_APP.md` | Documentación de la plantilla | Solo lectura |
+
+::nota Dos ejemplos que trae la plantilla | En <code>agent/tools/</code> vienen <code>get_current_time</code> (una tool simple) y <code>send_message</code>. En <code>agent.py</code>, <code>send_message</code> aparece en <code>REQUIRE_APPROVAL</code>: antes de ejecutarla el agente se detiene y pide aprobación (<i>human in the loop</i>). Es la forma de proteger tools que hacen cambios.
+::docs Opciones de init | `agentbricks init --help`: `--framework langgraph` (por defecto) u `openai` (OpenAI Agents SDK); `--server custom` para un FastAPI mínimo; `--existing` para migrar un agente que ya tienes.
+=== md
+#### A.3 Tools gestionadas y model service
+::pill DEMO
+
+Cada comando valida el recurso y lo declara en `agent.toml`. El último hace que el modelo pase por **tu** model service, que gobernarás en el Lab 4.
+=== py
+toml_actual = open(f"{PROYECTO}/agent.toml").read()
+if "incidencias_abiertas" not in toml_actual:
+    agentbricks("tools", "add", "uc-function", f"{CATALOGO}.{MI_ESQUEMA}.incidencias_abiertas")
+if "genie_agent" not in toml_actual:
+    agentbricks("tools", "add", "genie-agent", GENIE_ID)
+if 'kind = "sandbox"' not in toml_actual:
+    agentbricks("tools", "add", "sandbox")
+if "model_services" not in toml_actual:
+    agentbricks("experimental", "models", "bind", MODELO_SERVICIO, "--default", MODELO_SYSTEM)
+print(open(f"{PROYECTO}/agent.toml").read())
+=== md
+#### A.4 Cómo llegan las tools al agente
+::pill LECTURA
+
+Las tools entran en dos momentos. Al **construir**, cada `tools add` de la celda A.3 validó la tool y la declaró en `agent.toml`. Al **responder**, en cada pregunta, `create_agent_graph` en `agent/agent.py` junta las tools de cuatro fuentes y arma el agente:
+
+<div style="display:flex; justify-content:center; margin:12px 0;">
+<svg viewBox="0 0 860 250" style="max-width:860px; width:100%;" font-family="-apple-system,sans-serif">
+  <defs><marker id="fl" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1B5162"/></marker></defs>
+  <rect x="10" y="10" width="270" height="48" rx="10" fill="#fff" stroke="#2272B4" stroke-width="2"/><text x="24" y="31" font-size="12" font-weight="700" fill="#1B3139">agent.toml · [[tools]]</text><text x="24" y="48" font-size="10.5" fill="#5A6F77">UC function, sandbox, MCP gestionados, Genie</text>
+  <rect x="10" y="68" width="270" height="48" rx="10" fill="#fff" stroke="#2272B4" stroke-width="2"/><text x="24" y="89" font-size="12" font-weight="700" fill="#1B3139">agent/mcps.py</text><text x="24" y="106" font-size="10.5" fill="#5A6F77">tu MCP del Lab 2 (por URL)</text>
+  <rect x="10" y="126" width="270" height="48" rx="10" fill="#fff" stroke="#2272B4" stroke-width="2"/><text x="24" y="147" font-size="12" font-weight="700" fill="#1B3139">agent/tools/*.py</text><text x="24" y="164" font-size="10.5" fill="#5A6F77">tools Python con @tool</text>
+  <rect x="10" y="184" width="270" height="48" rx="10" fill="#fff" stroke="#2272B4" stroke-width="2"/><text x="24" y="205" font-size="12" font-weight="700" fill="#1B3139">[memory_store]</text><text x="24" y="222" font-size="10.5" fill="#5A6F77">remember · recall · forget</text>
+  <rect x="380" y="70" width="230" height="104" rx="14" fill="#F9F7F4" stroke="#FF3621" stroke-width="2"/><text x="495" y="100" text-anchor="middle" font-size="13" font-weight="700" fill="#1B3139">create_agent_graph()</text><text x="495" y="120" text-anchor="middle" font-size="10.5" fill="#5A6F77">agent/agent.py · en cada pregunta</text><text x="495" y="138" text-anchor="middle" font-size="10.5" fill="#5A6F77">con la identidad de quien pregunta</text><text x="495" y="156" text-anchor="middle" font-size="10.5" fill="#5A6F77">(auth = "user")</text>
+  <rect x="690" y="88" width="160" height="68" rx="12" fill="#1B3139"/><text x="770" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Agente</text><text x="770" y="137" text-anchor="middle" font-size="10.5" fill="#C9D3D6">LLM + tools + prompt</text>
+  <path d="M280 34 L378 100" stroke="#1B5162" stroke-width="2" marker-end="url(#fl)"/>
+  <path d="M280 92 L378 115" stroke="#1B5162" stroke-width="2" marker-end="url(#fl)"/>
+  <path d="M280 150 L378 130" stroke="#1B5162" stroke-width="2" marker-end="url(#fl)"/>
+  <path d="M280 208 L378 146" stroke="#1B5162" stroke-width="2" marker-end="url(#fl)"/>
+  <path d="M610 122 L688 122" stroke="#1B5162" stroke-width="2" marker-end="url(#fl)"/>
+</svg>
+</div>
+
+Este es el código que vas a encontrar en tu `agent/agent.py`:
+
+```python
+mcp = await mcp_tools(build_mcp_servers(), ...)   # agent.toml (UC function, sandbox, MCP) + agent/mcps.py
+tools = [
+    *all_tools(),          # agent/tools/*.py
+    *memory_tools(actor),  # remember / recall / forget de ESTE usuario
+    *genie_tools(...),     # el Genie declarado en agent.toml
+    *mcp,
+]
+return create_agent(model=..., tools=tools, system_prompt=SYSTEM_PROMPT, ...)
+```
+
+Que el agente se arme **en cada pregunta** no es un detalle: así cada llamada usa las credenciales de quien pregunta y su propia memoria. Por eso agregar una tool **no requiere editar `agent.py`**: basta con declararla donde corresponde.
+=== md
+#### A.5 Tu MCP y el prompt en español
+::pill DEMO
+
+`agente-referencia/aplicar_referencia.py` conecta tu MCP del Lab 2 por URL (`agent/mcps.py`), agrega un prompt de sistema en español a `agent/agent.py` y declara la URL en `app.yaml`. Ábrelo: son 80 líneas.
+=== py
+URL_MCP_PROPIO = w.apps.get(MCP_APP).url
+r = subprocess.run([sys.executable, os.path.abspath("agente-referencia/aplicar_referencia.py"), URL_MCP_PROPIO],
+                   cwd=PROYECTO, capture_output=True, text=True)
+print(r.stdout or r.stderr)
+displayHTML(f"<div style='font-size:15px'>Tu proyecto: <a href='{HOST}/#workspace{PROYECTO}' target='_blank'>{PROYECTO}</a> · "
+            f"abre <code>agent/agent.py</code> y busca <code>SYSTEM_PROMPT</code>.</div>")
+=== md
+#### A.6 ¿Dónde agrego una tool nueva?
+::pill LECTURA
+
+Depende de qué tipo de tool sea:
+
+| Quiero agregar… | Dónde | Cómo |
+|---|---|---|
+| Una **UC function** | `agent.toml` | `agentbricks tools add uc-function <catálogo>.<schema>.<función>` |
+| Un **Genie** | `agent.toml` | `agentbricks tools add genie-agent <space_id>` |
+| El **sandbox** de código | `agent.toml` | `agentbricks tools add sandbox` |
+| Un **MCP gestionado o registrado en Unity Gateway** (`system.ai.*`, un MCP externo registrado, Genie One) | `agent.toml` | `agentbricks tools add mcp <servicio>`. Para ver los disponibles: `agentbricks tools list --kind mcp` |
+| **Un MCP propio en Databricks Apps** (como el del Lab 2) o cualquier URL directa | `agent/mcps.py` | Por código (ejemplo abajo) |
+| Una **función Python** propia | `agent/tools/` | Un archivo nuevo con una función decorada con `@tool` |
+
+Tu MCP del Lab 2 va en `mcps.py` porque una app de Databricks Apps **no se puede registrar** como MCP service en Unity Gateway. Para agregar un segundo MCP en una app, extiende la lista de `build_mcp_servers()`:
+
+```python
+def build_mcp_servers() -> list[DatabricksMCPServer]:
+    servidores = []
+    for nombre, variable in [("mcp_mesa_servicio", "MCP_MESA_SERVICIO_URL"),
+                             ("mcp_inventario", "MCP_INVENTARIO_URL")]:   # ← el nuevo
+        url = os.getenv(variable, "").strip().rstrip("/")
+        if url:
+            servidores.append(DatabricksMCPServer(
+                name=nombre,
+                url=url if url.endswith("/mcp") else url + "/mcp",
+                workspace_client=workspace_client()))
+    return servidores
+```
+
+Y tres pasos más:
+1. Declara la variable en el `app.yaml` de tu proyecto, dentro de la lista `env:` (igual que `MCP_MESA_SERVICIO_URL`): `- name: MCP_INVENTARIO_URL` y `value: <url de la app>`.
+2. Dale al service principal del agente `CAN USE` sobre esa app, como en la celda B.2.
+3. Redespliega con `desplegar()` (celda C.1).
+
+En esta versión los comandos del CLI se corren con el helper del notebook: por ejemplo `agentbricks("tools", "add", "uc-function", "<catálogo>.<schema>.<función>")` y después `desplegar()`.
+
+::nota MCP de terceros | Para un MCP externo (de un proveedor), lo recomendable es <b>registrarlo en Unity Gateway</b> y agregarlo con <code>tools add mcp</code>. Así queda gobernado: permisos, rate limits, policies y registro en <code>system.ai_gateway.usage</code>, sin credenciales en el código.
+=== md
+## B. Desplegar
+=== md
+#### B.1 `deploy`
+::pill DEMO
+
+Sube el código como app `agent-bricks-<agente>`, crea los stores, tu model service y los permisos del service principal. **La primera vez tarda 4–6 minutos.** Si el CLI se cansa de esperar el cómputo de la app, la celda reintenta una vez. Al final verás *"Couldn't check the agent answers… uses a PAT"*: es normal desde un notebook; el agente sí quedó desplegado.
+=== py
+def desplegar():
+    try:
+        agentbricks("deploy", AGENTE, timeout=1200)
+    except RuntimeError:
+        print("\n• Reintentando: la app tardó en arrancar la primera vez…\n")
+        agentbricks("deploy", AGENTE, timeout=1200)
+
+
+desplegar()
+=== md
+#### B.2 Dar acceso a tu MCP
+::pill DEMO
+
+Tu agente llama al MCP del Lab 2 con la identidad de su service principal: necesita `CAN USE` sobre la app del MCP.
+=== py
+from databricks.sdk.service.apps import AppAccessControlRequest, AppPermissionLevel
+
+app_agente = w.apps.get(AGENTE_APP)
+w.apps.update_permissions(MCP_APP, access_control_list=[
+    AppAccessControlRequest(service_principal_name=app_agente.service_principal_client_id,
+                            permission_level=AppPermissionLevel.CAN_USE)])
+print(f"✓ {AGENTE_APP} puede usar {MCP_APP}")
+displayHTML(f"<div style='font-size:15px'>Abre tu agente: <a href='{app_agente.url}' target='_blank'>{app_agente.url}</a></div>")
+=== md
+#### B.3 Probarlo
+::pill UI
+
+En el chat del agente pregunta:
+
+> *¿Cuántas P1 llevan más de 24 horas abiertas, qué equipos concentran más y cuál es el estado de SLA de la más antigua?*
+
+Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` → `calcular_sla`, y al final la lista de fuentes usadas.
+=== md
+## C. Editar y redeployar
+=== md
+#### C.1 Cambia el comportamiento
+::pill RETO
+
+Abre `agent/agent.py` en tu proyecto (link de la celda A.5) y cambia el `SYSTEM_PROMPT`: por ejemplo, que siempre cierre con una recomendación de a quién escalar. Guarda y redeploya (≈ 35 s):
+=== py
+desplegar()
+=== md
+## D. Trazas y memoria
+=== md
+#### D.1 Tus últimas trazas
+::pill DEMO
+=== py
+import mlflow
+
+mlflow.set_tracking_uri("databricks")
+experimentos = mlflow.search_experiments(filter_string=f"name LIKE '/Shared/agentbricks_traces/{AGENTE}-%'")
+if not experimentos:
+    print("Todavía no hay experimento: despliega el agente y hazle una pregunta.")
+else:
+    exp = experimentos[0]
+    orden = dict(max_results=5, order_by=["timestamp_ms DESC"])
+    try:
+        trazas = mlflow.search_traces(locations=[exp.experiment_id], include_spans=False, **orden)
+    except TypeError:  # MLflow anterior a 3.5
+        trazas = mlflow.search_traces(experiment_ids=[exp.experiment_id], **orden)
+    if len(trazas):
+        display(trazas[[c for c in ["trace_id", "request_time", "execution_duration", "state", "request_preview"] if c in trazas.columns]])
+    else:
+        print("El experimento existe pero aún no tiene trazas: hazle una pregunta al agente desplegado.")
+    displayHTML(f"<a href='{HOST}/ml/experiments/{exp.experiment_id}/traces' target='_blank'>Abrir las trazas en MLflow</a>")
+=== md
+#### D.2 Reto: que recuerde una preferencia
+::pill RETO
+
+1. En el chat: *"Recuerda esto: prefiero las respuestas en una tabla y sin emojis."* → `remember`.
+2. **New chat** y pregunta: *"¿Qué equipos tienen más P1 abiertas?"* → `recall` al inicio y respuesta en tabla, sin emojis.
+3. En la tarjeta **Memory** del chat verás la entrada que guardó.
+=== md
+::nota Si te atoras | Los logs del agente: <code>agentbricks("deployments", "logs", AGENTE_APP)</code>. Errores comunes: olvidar la celda B.2 (el MCP responde 401/403) o un error de sintaxis en <code>agent/agent.py</code> (el deploy falla al arrancar).
+=== md
+## Conclusión
+
+Construiste y desplegaste un agente custom sin instalar nada: el mismo CLI, el mismo `agent.toml` y el mismo runtime que la versión con laptop. Lo que aprendiste se traslada tal cual al flujo de desarrollo local cuando el equipo tenga su ambiente listo.
+
+En el **Lab 4** gobiernas el modelo de tu agente desde Unity Gateway.

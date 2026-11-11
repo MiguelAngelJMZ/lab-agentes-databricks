@@ -1,0 +1,128 @@
+#! 05 - Opcional - Evaluación del agente con MLflow
+=== md
+# Opcional · Evaluar el agente con MLflow
+#### Duración: 45 minutos
+=== md
+## Panorama
+
+"Funciona en la demo" no es lo mismo que "funciona". Antes de una PoC necesitas **medir**: un set de preguntas reales con lo que esperas, *scorers* que califiquen cada respuesta y una forma de **comparar versiones** (otro prompt, otro modelo, otra tool).
+
+Aquí evaluamos el agente mínimo del Lab 1 con dos prompts de sistema y comparamos los resultados en MLflow:
+- **LLM judges** integrados: `Correctness` (¿coincide con lo esperado?) y `Guidelines` (¿cumple nuestras reglas de estilo?).
+- **Un scorer de código** propio: ¿el agente usó la tool correcta?
+=== md
+### Objetivos de aprendizaje
+
+- **Construir** un dataset de evaluación con preguntas, hechos esperados y la tool esperada.
+- **Combinar** LLM judges con un scorer de código en `mlflow.genai.evaluate()`.
+- **Comparar** dos versiones del prompt y **leer** los resultados en la UI de MLflow.
+=== pip
+langgraph langchain langchain-openai langchain-mcp-adapters "mcp>=1.24,<2" "mlflow>=3.5"
+=== py
+dbutils.library.restartPython()
+=== run ./Includes/Setup-Lab
+=== md
+## A. El agente a evaluar
+::pill DEMO
+
+El mismo agente del Lab 1: tu UC function y el Genie como tools. `predecir` es la función que MLflow llamará con cada pregunta; devuelve la respuesta y las tools usadas.
+=== py
+import mlflow
+from langchain.agents import create_agent
+
+mlflow.langchain.autolog()
+TOOLS = mcp_listar(URL_MCP_FUNCIONES, "uc-functions") + mcp_listar(URL_MCP_GENIE, "genie")
+LLM = modelo_chat()
+
+PROMPTS = {
+    "v1_basico": "Eres el asistente de la mesa de servicio de TI de La Tinka. Responde en español.",
+    "v2_reglas": ("Eres el asistente de la mesa de servicio de TI de La Tinka. Responde en español, en máximo cinco líneas, "
+                  "con cifras exactas tomadas de las tools y sin inventar datos. Para incidencias abiertas por prioridad usa "
+                  "incidencias_abiertas; para el resto de preguntas de negocio usa Genie. Termina indicando la fuente usada."),
+}
+
+
+def armar_predictor(prompt):
+    agente = create_agent(LLM, tools=TOOLS, system_prompt=prompt)
+
+    def predecir(pregunta: str) -> dict:
+        r = correr(agente.ainvoke({"messages": [{"role": "user", "content": pregunta}]}), timeout=300)
+        texto = r["messages"][-1].content
+        texto = texto if isinstance(texto, str) else " ".join(p.get("text", "") for p in texto if isinstance(p, dict))
+        return {"respuesta": texto, "tools": tools_usadas(r["messages"])}
+
+    return predecir
+=== md
+## B. El dataset de evaluación
+::pill LECTURA
+
+Ocho preguntas reales con los **hechos** que debe contener una buena respuesta (los calculamos con SQL sobre el dataset, a la fecha de corte del lab) y la tool que esperamos que use. En una PoC real empiezas con 10–15 preguntas de usuarios reales y lo vas ampliando con las trazas de producción.
+=== py
+DATASET = [
+    {"inputs": {"pregunta": "¿Cuántas incidencias P1 están abiertas?"},
+     "expectations": {"expected_facts": ["Hay 22 incidencias P1 abiertas o en progreso"], "tool": "incidencias_abiertas"}},
+    {"inputs": {"pregunta": "¿Qué equipo tiene más P1 abiertas?"},
+     "expectations": {"expected_facts": ["Pagos y Premios tiene más P1 abiertas, con 7"], "tool": "incidencias_abiertas"}},
+    {"inputs": {"pregunta": "¿Cuál es la P1 abierta más antigua y cuántas horas lleva?"},
+     "expectations": {"expected_facts": ["INC-02238", "lleva unas 260.7 horas abierta"], "tool": "incidencias_abiertas"}},
+    {"inputs": {"pregunta": "¿Cuántas incidencias P3 siguen abiertas?"},
+     "expectations": {"expected_facts": ["Hay 41 incidencias P3 abiertas o en progreso"], "tool": "incidencias_abiertas"}},
+    {"inputs": {"pregunta": "¿Qué equipo tiene el peor cumplimiento de SLA en incidencias cerradas?"},
+     "expectations": {"expected_facts": ["Pagos y Premios tiene el peor cumplimiento, alrededor de 66.7%"], "tool": "query_space"}},
+    {"inputs": {"pregunta": "¿Qué equipo tiene el mejor cumplimiento de SLA en incidencias cerradas?"},
+     "expectations": {"expected_facts": ["Seguridad y Accesos tiene el mejor cumplimiento, alrededor de 89.1%"], "tool": "query_space"}},
+    {"inputs": {"pregunta": "¿Cuántas incidencias cerradas atendió Mesa de Ayuda N1?"},
+     "expectations": {"expected_facts": ["Mesa de Ayuda N1 cerró 769 incidencias"], "tool": "query_space"}},
+    {"inputs": {"pregunta": "¿Cuántas P2 hay abiertas?"},
+     "expectations": {"expected_facts": ["Hay 19 incidencias P2 abiertas o en progreso"], "tool": "incidencias_abiertas"}},
+]
+print(f"{len(DATASET)} preguntas")
+=== md
+## C. Los scorers
+::pill DEMO
+
+- `Correctness`: un LLM judge compara la respuesta con `expected_facts`.
+- `Guidelines`: un LLM judge revisa reglas en lenguaje natural.
+- `tool_correcta`: código Python, determinista: ¿alguna tool usada contiene el nombre esperado?
+=== py
+from mlflow.genai.scorers import Correctness, Guidelines, scorer
+
+
+@scorer
+def tool_correcta(outputs, expectations) -> bool:
+    return any(expectations["tool"] in t for t in outputs.get("tools", []))
+
+
+SCORERS = [
+    Correctness(),
+    Guidelines(name="estilo", guidelines="La respuesta está en español, es breve (máximo cinco líneas) e indica la fuente de los datos."),
+    tool_correcta,
+]
+=== md
+## D. Evaluar y comparar
+::pill DEMO
+
+Cada versión del prompt es una corrida de evaluación en el experimento del notebook. Tarda ≈ 2–4 minutos por versión.
+=== py
+resultados = {}
+for nombre, prompt in PROMPTS.items():
+    with mlflow.start_run(run_name=f"eval_{nombre}"):
+        r = mlflow.genai.evaluate(data=DATASET, predict_fn=armar_predictor(prompt), scorers=SCORERS)
+        resultados[nombre] = r.metrics
+import pandas as pd
+display(pd.DataFrame(resultados).T[[c for c in pd.DataFrame(resultados).T.columns if c.endswith("/mean")]])
+=== md
+#### D.1 Leer los resultados
+::pill UI
+
+Abre el experimento del notebook (ícono de matraz) → pestaña **Evaluations**. Compara las dos corridas pregunta por pregunta: para cada fallo, el judge explica **por qué**. Busca en particular las preguntas de SLA: ¿el agente fue a Genie o intentó contestar con la función de incidencias abiertas?
+=== md
+## Reto
+::pill RETO
+
+Escribe una tercera versión del prompt (`v3_...`) que mejore la métrica más baja sin empeorar las demás, y vuelve a correr la sección D. Pista: los fallos de `tool_correcta` se suelen arreglar mejor con un buen `COMMENT` en la función (Lab 1) que con más instrucciones en el prompt.
+=== md
+## Conclusión
+
+Con un dataset pequeño y tres scorers ya puedes decidir con datos entre dos versiones de un agente. El mismo `mlflow.genai.evaluate()` sirve para el agente desplegado del Lab 3 (cambiando `predict_fn` por una llamada a su endpoint) y para monitorear producción con las trazas.
+::docs Evaluate and improve | https://docs.databricks.com/aws/en/agents/

@@ -1,0 +1,16 @@
+# Material solo para el instructor (no se publica)
+materiales/guia_instructor.md
+docs/PLAN.md
+presentacion/
+
+# Documentos base del laboratorio
+Lab_Agentes_*.pdf
+Lab Agentes - Con Agent Bricks CLI - Databricks.html
+Lab Agentes - Con Agent Bricks CLI - Databricks_files/
+
+# Sistema y Python
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.env

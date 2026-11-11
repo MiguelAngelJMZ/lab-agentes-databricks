@@ -1,0 +1,304 @@
+#! 02 - Lab 2 - Servidor MCP propio en Databricks Apps
+=== md
+# Lab 2 · Servidor MCP propio en Databricks Apps
+#### Duración: 40 minutos
+=== md
+## Panorama
+
+En el Lab 1 las tools eran SQL. Pero mucha lógica de negocio no vive en una tabla: reglas de escalamiento, cálculos, llamadas a APIs internas. Para eso construyes tu **propio servidor MCP** y lo hospedas en **Databricks Apps**: Databricks pone el cómputo, la URL HTTPS y la autenticación OAuth; tú escribes funciones Python.
+
+El servidor de este lab, **mcp-mesa-servicio**, parte de la plantilla oficial *MCP Server (Starter)* y trae tres tools de la mesa de servicio:
+
+| Tool | Qué hace |
+|---|---|
+| `calcular_sla(prioridad, horas_abierta)` | Estado de SLA (dentro / en riesgo / vencida), horas restantes y a quién escalar |
+| `estado_plataforma_juego(juego)` | Simula una API interna de monitoreo de Tinka, Kábala, Ganadiario, Te Apuesto, Kinelo y Raspaditas |
+| `usuario_actual()` | Devuelve quién llama: demuestra que el servidor recibe la identidad del usuario final |
+
+Secciones:
+- **A. Por qué un MCP propio** y las tres formas de hospedarlo
+- **B. Anatomía del servidor**: dónde se definen las tools y por qué el docstring importa
+- **C. Desplegarlo** como app `mcp-<tu usuario>`
+- **D. Probarlo** desde AI Playground
+- **E. Reto**: agregar la tool `prioridad_sugerida` y redeployar
+=== md
+### Objetivos de aprendizaje
+
+Al terminar este lab podrás:
+- **Elegir** entre la plantilla Starter, la plantilla OpenAPI y un servidor existente para hospedar un MCP en Databricks Apps.
+- **Leer** un servidor FastMCP y **escribir** una tool con un docstring que el LLM entienda.
+- **Desplegar** y **redeployar** el servidor como app y obtener su URL MCP (`<url de la app>/mcp`).
+- **Conectar** el MCP a AI Playground y llamar sus tools.
+- **Explicar** cómo autentica una app MCP (OAuth, `CAN USE`, identidad del usuario final).
+=== md
+<div style="border: 1px solid #DCE0E2; border-radius: 12px; overflow: hidden; margin: 16px 0;">
+  <div style="background: #FF3621; color: #fff; padding: 11px 18px;">
+    <strong style="font-size: 13pt; letter-spacing: 0.05em; text-transform: uppercase;">Antes de empezar: elige el cómputo</strong>
+  </div>
+  <div style="background: #F9F7F4; padding: 18px 22px; color: #1B3139;">
+    <ol style="margin: 0; padding-left: 22px; font-size: 13pt; line-height: 1.7;">
+      <li><strong>Conecta Serverless</strong> en el menú <strong>Connect</strong>.</li>
+      <li><strong>Corre las celdas en orden.</strong> Crear la app toma ≈ 2–3 minutos: lánzala y mientras tanto lee la sección B.</li>
+    </ol>
+  </div>
+</div>
+=== md
+### Setup del lab
+=== run ./Includes/Setup-Lab
+=== md
+## A. Por qué un MCP propio
+=== md
+### A.1 Tres formas de hospedar un MCP en Databricks Apps
+::pill LECTURA
+
+<div style="display:flex; gap:14px; flex-wrap:wrap; margin:10px 0;">
+  <div style="flex:1 1 220px; background:#fff; border:1px solid #ECEAE6; border-top:4px solid #00A972; border-radius:12px; padding:14px 16px;">
+    <h4 style="margin:0 0 6px;">Plantilla Starter</h4>
+    <p style="font-size:14px; margin:0;">Escribes tools en Python (FastMCP). Trae una tool <code>health</code> para probar. <b>Es la que usamos hoy.</b></p>
+  </div>
+  <div style="flex:1 1 220px; background:#fff; border:1px solid #ECEAE6; border-top:4px solid #2272B4; border-radius:12px; padding:14px 16px;">
+    <h4 style="margin:0 0 6px;">Plantilla OpenAPI</h4>
+    <p style="font-size:14px; margin:0;">Ya tienes una API REST: subes su <code>spec.json</code> a un volumen y una conexión HTTP de UC guarda las credenciales. El MCP expone los endpoints como tools.</p>
+  </div>
+  <div style="flex:1 1 220px; background:#fff; border:1px solid #ECEAE6; border-top:4px solid #FFAB00; border-radius:12px; padding:14px 16px;">
+    <h4 style="margin:0 0 6px;">Servidor existente</h4>
+    <p style="font-size:14px; margin:0;">Cualquier servidor MCP con <i>Streamable HTTP</i> que escuche en <code>DATABRICKS_APP_PORT</code>, con su <code>app.yaml</code>.</p>
+  </div>
+</div>
+
+En la UI las tres empiezan igual: **Unity Gateway → MCPs → + MCP → Build a new MCP server**. El nombre de la app debe empezar con **`mcp-`** para que AI Playground la reconozca como servidor MCP.
+
+::alerta Apps no se registran como MCP service | Unity Gateway permite <b>registrar</b> MCP externos (de terceros o autohospedados fuera de Databricks) como securables de UC. Un MCP en Databricks Apps <b>no se registra</b>: los clientes se conectan directo a <code>&lt;url de la app&gt;/mcp</code> y el acceso se gobierna con los permisos de la app (<code>CAN USE</code>) y OAuth. Los tokens personales (PAT) no funcionan.
+::docs Host an MCP server on Databricks Apps | https://docs.databricks.com/aws/en/agents/mcp-tools/custom-mcp
+=== md
+## B. Anatomía del servidor
+=== md
+### B.1 Los archivos
+::pill LECTURA
+
+| Archivo | Para qué |
+|---|---|
+| `app.yaml` | Comando de arranque de la app: `uv run custom-mcp-server` |
+| `pyproject.toml` | Dependencias (FastMCP, FastAPI, Databricks SDK) |
+| `server/app.py` | Crea el servidor FastMCP en modo **stateless** y lo sirve en `/mcp` |
+| `server/tools.py` | **Aquí viven las tools.** Es el único archivo que tocas en el reto |
+| `server/utils.py` | Toma el token del usuario (`x-forwarded-access-token`) para actuar en su nombre |
+
+Así se ve una tool. El decorador la registra; el **docstring** se convierte en la descripción que lee el LLM, y los *type hints* en el esquema de parámetros:
+
+```python
+@mcp_server.tool
+def calcular_sla(prioridad: str, horas_abierta: float) -> dict:
+    """Calcula el estado de SLA de una incidencia de la mesa de servicio.
+
+    Úsala cuando necesites saber si una incidencia está dentro del SLA, en riesgo o
+    vencida, cuántas horas le quedan y a quién hay que escalarla.
+    """
+    ...
+```
+=== md
+### B.2 Cómo autentica
+::pill LECTURA
+
+<div style="display:flex; justify-content:center; margin:12px 0;">
+<svg viewBox="0 0 760 170" style="max-width:760px; width:100%;" font-family="-apple-system,sans-serif">
+  <defs><marker id="h" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1B5162"/></marker></defs>
+  <rect x="10" y="50" width="150" height="70" rx="12" fill="#EAF1FB" stroke="#2272B4" stroke-width="2"/>
+  <text x="85" y="80" text-anchor="middle" font-size="13" font-weight="700" fill="#1B3139">Cliente MCP</text>
+  <text x="85" y="98" text-anchor="middle" font-size="11" fill="#5A6F77">AI Playground · agente</text>
+  <rect x="300" y="40" width="170" height="90" rx="12" fill="#FEF3E2" stroke="#FFAB00" stroke-width="2"/>
+  <text x="385" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="#1B3139">Proxy de Apps</text>
+  <text x="385" y="92" text-anchor="middle" font-size="11" fill="#5A6F77">valida OAuth y</text>
+  <text x="385" y="108" text-anchor="middle" font-size="11" fill="#5A6F77">CAN USE en la app</text>
+  <rect x="600" y="50" width="150" height="70" rx="12" fill="#E6F5EE" stroke="#00A972" stroke-width="2"/>
+  <text x="675" y="80" text-anchor="middle" font-size="13" font-weight="700" fill="#1B3139">mcp-&lt;usuario&gt;</text>
+  <text x="675" y="98" text-anchor="middle" font-size="11" fill="#5A6F77">tools en Python</text>
+  <path d="M160 85 L298 85" stroke="#1B5162" stroke-width="2" marker-end="url(#h)"/>
+  <text x="229" y="76" text-anchor="middle" font-size="11" fill="#1B3139">token OAuth</text>
+  <path d="M470 85 L598 85" stroke="#1B5162" stroke-width="2" marker-end="url(#h)"/>
+  <text x="534" y="76" text-anchor="middle" font-size="11" fill="#1B3139">x-forwarded-access-token</text>
+  <text x="380" y="160" text-anchor="middle" font-size="12" fill="#5A6F77">El servidor puede actuar como el usuario final (tool usuario_actual) o como el service principal de la app.</text>
+</svg>
+</div>
+=== md
+## C. Desplegar el servidor
+
+Tienes dos caminos. **En el lab usamos el camino 2** porque es más rápido y no depende de que todos encuentren los mismos botones; el camino 1 es el que usarías en tu día a día.
+=== md
+### C.1 Camino 1 · desde la UI (referencia)
+::pill UI
+
+1. **Unity Gateway** → **MCPs** → **+ MCP** → **Build a new MCP server**.
+2. **Install from a template** → pestaña **Agents** → **MCP Server (Starter)** → **Next**.
+3. Nombre: `mcp-<tu usuario>` → **Create app**. Espera a que termine el despliegue en **Overview**.
+4. Para editar el código: **Edit in your IDE** (o copia los archivos a una carpeta del workspace), cambia `server/tools.py` y haz **Deploy** desde esa carpeta.
+=== md
+#### C.2 Camino 2 · desde este notebook
+::pill DEMO
+
+La celda copia el código del servidor a tu carpeta `/Workspace/Users/<tú>/lab-agentes/mcp-server` (solo la primera vez, para no pisar tus cambios), crea la app `mcp-<tu usuario>` y la despliega. **Tarda ≈ 2–3 minutos**: lánzala y sigue leyendo.
+=== py
+import base64
+from databricks.sdk.service.apps import App, AppDeployment
+from databricks.sdk.service.workspace import ImportFormat
+
+ORIGEN_MCP = os.path.abspath("mcp-server")
+
+
+def copiar_servidor():
+    try:
+        w.workspace.get_status(CARPETA_MCP)
+        print(f"• Ya tienes tu copia en {CARPETA_MCP} (no la sobrescribo)")
+        return
+    except Exception:
+        pass
+    for raiz, carpetas, archivos in os.walk(ORIGEN_MCP):
+        carpetas[:] = [c for c in carpetas if not c.startswith((".", "__"))]
+        for archivo in archivos:
+            rel = os.path.relpath(os.path.join(raiz, archivo), ORIGEN_MCP)
+            w.workspace.mkdirs(os.path.dirname(f"{CARPETA_MCP}/{rel}"))
+            with open(os.path.join(raiz, archivo), "rb") as fh:
+                w.workspace.import_(f"{CARPETA_MCP}/{rel}", content=base64.b64encode(fh.read()).decode(),
+                                    format=ImportFormat.AUTO, overwrite=True)
+    print(f"✓ Código copiado a {CARPETA_MCP}")
+
+
+def desplegar_mcp():
+    try:
+        app = w.apps.get(MCP_APP)
+        print(f"• La app {MCP_APP} ya existe")
+    except Exception:
+        print(f"• Creando la app {MCP_APP} (≈ 2 min)…")
+        app = w.apps.create_and_wait(App(name=MCP_APP, description="MCP de la mesa de servicio (lab de agentes)"))
+    inicio = time.time()
+    d = w.apps.deploy_and_wait(app_name=MCP_APP, app_deployment=AppDeployment(source_code_path=CARPETA_MCP))
+    app = w.apps.get(MCP_APP)
+    print(f"✓ Despliegue {d.status.state.value} en {time.time() - inicio:.0f}s · {d.status.message}")
+    return app
+
+
+copiar_servidor()
+app_mcp = desplegar_mcp()
+URL_MCP_PROPIO = app_mcp.url + "/mcp"
+displayHTML(f"<div style='font-size:15px'>URL de tu MCP: <code>{URL_MCP_PROPIO}</code><br>"
+            f"App: <a href='{HOST}/apps/{MCP_APP}' target='_blank'>{MCP_APP}</a> · "
+            f"Código: <a href='{HOST}/#workspace{CARPETA_MCP}' target='_blank'>{CARPETA_MCP}</a></div>")
+=== md
+#### C.3 Abrir la app
+::pill UI
+
+Abre el link de la app. La página raíz responde `{"status": "healthy", "mcp": "/mcp"}`: el servidor está vivo. En la pestaña **Logs** verás cada request MCP que llegue.
+=== md
+## D. Probar el MCP
+
+Un MCP en Apps exige un **token OAuth** del usuario. Lo más directo es probarlo desde las herramientas de Databricks que ya hacen ese login por ti.
+=== md
+#### D.1 En AI Playground
+::pill UI
+
+1. **AI Playground** → elige un modelo con tools (por ejemplo Claude Sonnet).
+2. **Tools** → **+ Add tool** → **MCP Servers** → elige tu app `mcp-<tu usuario>` (aparece por el prefijo `mcp-`).
+3. Pregunta: *"Llama la tool health"* → debe responder `healthy`.
+4. Pregunta: *"La incidencia P1 lleva 6 horas abierta, ¿cómo está su SLA y a quién escalo?"* → debe llamar `calcular_sla`.
+5. Pregunta: *"¿Quién soy?"* → `usuario_actual` devuelve **tu** correo: el servidor recibe tu identidad.
+=== md
+::nota Versión con CLI (laptop) | Con tu perfil OAuth y <code>uv run --with databricks-mcp python</code>: <code>from databricks.sdk import WorkspaceClient; from databricks_mcp import DatabricksMCPClient; w = WorkspaceClient(profile='&lt;perfil&gt;'); print([t.name for t in DatabricksMCPClient(server_url='&lt;url&gt;/mcp', workspace_client=w).list_tools()])</code>
+=== md
+## E. Reto: agrega la tool `prioridad_sugerida`
+
+La mesa de ayuda recibe reclamos en texto libre y quiere que el agente **sugiera su prioridad** (P1 a P4). La función ya está escrita: tu trabajo es **agregarla al servidor, redesplegarlo y probarla**. Es el ciclo real de mantener un MCP: editar `tools.py` → redeploy → reconectar.
+=== md
+#### E.1 La función que vas a agregar
+::pill LECTURA
+
+Fíjate en tres cosas:
+- `@mcp_server.tool` la registra como tool del servidor.
+- El **docstring** es lo que lee el LLM: dice qué hace y cuándo usarla.
+- Los **type hints** (`descripcion: str`, `-> dict`) se convierten en el esquema de parámetros.
+
+```python
+    @mcp_server.tool
+    def prioridad_sugerida(descripcion: str) -> dict:
+        """Sugiere la prioridad (P1 a P4) de un reclamo nuevo de la mesa de servicio a partir de su texto.
+
+        Úsala cuando alguien describa un problema y pregunte qué prioridad debería tener o qué tan
+        urgente es. Devuelve la prioridad, las horas de SLA que le corresponden y la regla aplicada.
+
+        Args:
+            descripcion: texto del reclamo tal como lo escribió el usuario o el agente de venta.
+        """
+        texto = descripcion.lower()
+        reglas = [
+            ("P1", ("caído", "caido", "no vende", "no puedo vender", "premio", "no llegó el pago", "rechaza pagos"),
+             "Afecta ventas o el pago de premios"),
+            ("P2", ("error", "no puedo", "no carga", "rechazada", "pendiente"),
+             "Falla que impide una operación del usuario"),
+            ("P3", ("lento", "demora", "notificación", "historial"),
+             "Degradación o funcionalidad secundaria"),
+        ]
+        for prioridad, palabras, motivo in reglas:
+            encontradas = [p for p in palabras if p in texto]
+            if encontradas:
+                return {"prioridad": prioridad, "sla_horas": SLA_HORAS[prioridad],
+                        "regla": motivo, "palabras_clave": encontradas}
+        return {"prioridad": "P4", "sla_horas": SLA_HORAS["P4"], "regla": "Consulta o pedido sin impacto operativo",
+                "palabras_clave": []}
+```
+=== md
+#### E.2 Pégala en `server/tools.py`
+::pill RETO
+
+1. Corre la celda de abajo y abre el link a **tu** `tools.py`.
+2. Ve al **final del archivo**. La última línea es el comentario `# RETO del Lab 2: pega aquí la función prioridad_sugerida…`.
+3. Pon el cursor al final de ese comentario, presiona **Enter** y pega la función de E.1 tal cual.
+4. Revisa la sangría: `@mcp_server.tool` debe quedar **alineado con el comentario** (4 espacios), igual que las otras tools del archivo, porque todas viven dentro de `load_tools`.
+5. No hay que guardar: el editor guarda solo.
+=== py
+ARCHIVO_TOOLS = f"{CARPETA_MCP}/server/tools.py"
+displayHTML(f"<div style='font-size:15px'>📝 Abre tu archivo: <a href='{HOST}/#workspace{ARCHIVO_TOOLS}' target='_blank'>{ARCHIVO_TOOLS}</a></div>")
+=== md
+#### E.3 Revisar y redesplegar
+::pill DEMO
+
+La celda revisa tu `tools.py` antes de desplegar: que la función esté y que el archivo no tenga errores de sintaxis ni de sangría. Si todo está bien, redespliega la app (≈ 15–30 s).
+=== py
+import ast
+
+
+def revisar_tools():
+    codigo = open(ARCHIVO_TOOLS, encoding="utf-8").read()
+    try:
+        arbol = ast.parse(codigo)
+    except SyntaxError as e:
+        print(f"✗ Error de sintaxis en la línea {e.lineno}: {e.msg}. Suele ser la sangría: revisa el paso 4 de E.2.")
+        return False
+    carga = next((n for n in arbol.body if isinstance(n, ast.FunctionDef) and n.name == "load_tools"), None)
+    internas = [n.name for n in ast.walk(carga) if isinstance(n, ast.FunctionDef)] if carga else []
+    if "prioridad_sugerida" in internas:
+        print("✓ prioridad_sugerida está dentro de load_tools")
+        return True
+    if "def prioridad_sugerida" in codigo:
+        print("✗ La función quedó fuera de load_tools: agrégale sangría para alinearla con el comentario # RETO del Lab 2.")
+    else:
+        print("✗ Todavía no encuentro prioridad_sugerida en tu tools.py: pega la función de E.1 (paso 3 de E.2).")
+    return False
+
+
+if revisar_tools():
+    app_mcp = desplegar_mcp()
+=== md
+#### E.4 Probarla en AI Playground
+::pill RETO
+
+1. En **AI Playground**, quita tu MCP de las tools y vuelve a agregarlo: las tools se leen al conectar, así que sin reconectar no verás la nueva.
+2. Pregunta: *"Un vendedor reporta: el terminal no vende desde las 8 de la mañana. ¿Qué prioridad le pongo?"* → debe llamar `prioridad_sugerida` y responder **P1** (regla "Afecta ventas o el pago de premios").
+3. Pregunta: *"La app está lenta al cargar el historial de jugadas, ¿qué tan urgente es?"* → **P3**.
+4. Pregunta: *"Llegó el reclamo 'no me llegó el pago del premio'. ¿Qué prioridad tiene y cómo está su SLA si lleva 3 horas abierto?"* → el modelo encadena `prioridad_sugerida` y `calcular_sla`.
+
+::nota Si no aparece la tool | Revisa la pestaña <b>Logs</b> de tu app <code>mcp-&lt;usuario&gt;</code>: si el servidor no arrancó, ahí verás el error. La función también está en <code>soluciones/Lab 2 - tool prioridad_sugerida.py</code>. En el <b>Lab 3</b> tu agente tendrá esta tool automáticamente, porque conecta todo tu MCP.
+=== md
+## Conclusión
+
+Tienes tu propio servidor MCP en Databricks Apps, con tools de negocio en Python, autenticación OAuth y la identidad del usuario final disponible en cada llamada. Lo probaste sin escribir un cliente, desde AI Playground, y le agregaste una tool nueva con un redeploy.
+
+En el **Lab 3** este servidor se convierte en una tool más de tu agente, junto a tu UC function, el Genie y el sandbox. Anota la URL de tu MCP: la vas a necesitar.
