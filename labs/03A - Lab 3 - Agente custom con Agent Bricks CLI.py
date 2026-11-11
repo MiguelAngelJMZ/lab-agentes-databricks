@@ -16,7 +16,7 @@
 # MAGIC |---|---|---|
 # MAGIC | `incidencias_abiertas` | Tu UC function (Lab 1) | `agentbricks tools add uc-function` |
 # MAGIC | Genie "Mesa de servicio" | Genie Agent | `agentbricks tools add genie-agent` |
-# MAGIC | `run_code` | Databricks Sandbox | `agentbricks tools add sandbox` |
+# MAGIC | `run_code` | Databricks Sandbox (*opcional*) | `agentbricks tools add sandbox`, solo si tu workspace lo tiene |
 # MAGIC | `calcular_sla`, `estado_plataforma_juego` | Tu MCP en Apps (Lab 2) | por código: `agent/mcps.py` |
 # MAGIC | `remember`, `recall` | Memoria de largo plazo | viene en la plantilla |
 # MAGIC
@@ -89,7 +89,7 @@ dbutils.library.restartPython()
 # MAGIC [[tools]]                         # el Genie que ya conocen
 # MAGIC id = "genie_agent"
 # MAGIC source = {kind = "genie_agent", space_id = "<id>"}
-# MAGIC [[tools]]                         # el agente ejecuta código
+# MAGIC [[tools]]                         # el agente ejecuta código (opcional: solo si existe system.ai.sandbox)
 # MAGIC id = "sandbox"
 # MAGIC source = {kind = "sandbox", service = "system.ai.sandbox"}
 # MAGIC
@@ -159,6 +159,8 @@ except Exception:
     print("⚠ No encuentro tu app del Lab 2. Termina el Lab 2 o pide al instructor la URL del MCP compartido.")
 
 PERFIL = "<perfil>"  # el que creaste en el kickoff con `databricks auth login`
+LINEA_SANDBOX = (f"agentbricks -p {PERFIL} tools add sandbox" if sandbox_disponible() else
+                 "# (sin sandbox: Databricks Sandbox no está disponible en este workspace; el agente funciona sin run_code)")
 comandos = f"""# 0. Una carpeta de trabajo
 mkdir -p ~/lab-agentes && cd ~/lab-agentes
 
@@ -169,7 +171,7 @@ cd {AGENTE}
 # 2. Tools gestionadas
 agentbricks -p {PERFIL} tools add uc-function {CATALOGO}.{MI_ESQUEMA}.incidencias_abiertas
 agentbricks -p {PERFIL} tools add genie-agent {GENIE_ID}
-agentbricks -p {PERFIL} tools add sandbox
+{LINEA_SANDBOX}
 
 # 3. El modelo pasa por tu model service (lo usarás en el Lab 4)
 agentbricks -p {PERFIL} experimental models bind {MODELO_SERVICIO} --default {MODELO_SYSTEM}
@@ -245,7 +247,7 @@ displayHTML(f"<pre style='background:#0B2026;color:#E6F5EE;padding:14px 16px;bor
 # MAGIC
 # MAGIC > *¿Cuántas P1 llevan más de 24 horas abiertas, qué equipos concentran más y cuál es el estado de SLA de la más antigua?*
 # MAGIC
-# MAGIC Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` (sandbox) → `calcular_sla` (tu MCP). Las trazas locales quedan en la URL **Traces** que imprime `dev`.
+# MAGIC Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` (sandbox) → `calcular_sla` (tu MCP). Sin sandbox, la cadena es `incidencias_abiertas` → `calcular_sla`. Las trazas locales quedan en la URL **Traces** que imprime `dev`.
 # MAGIC <div style="border:1px solid #DCE0E2; border-left:4px solid #1B5162; border-radius:10px; background:#F9F7F4; padding:12px 16px; margin:12px 0; color:#0B2026; font-size:14px; line-height:1.55;">
 # MAGIC <strong style="color:#1B5162;">En dev la memoria está apagada</strong><br><code>agentbricks dev</code> corre con la memoria de largo plazo apagada y el historial en memoria del proceso. La memoria real aparece al desplegar.
 # MAGIC </div>

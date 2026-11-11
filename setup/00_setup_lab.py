@@ -340,6 +340,14 @@ except Exception as e:
     verificar("Memoria y sesiones de agentes (Agent Bricks)", "falta",
               f"Activa el preview 'Agent Memory Sessions' (Lab 3: memoria e historial del agente). Detalle: {str(e)[:120]}")
 
+try:
+    api("GET", "/api/2.1/unity-catalog/mcp-services/system.ai.sandbox")
+    verificar("Databricks Sandbox (opcional)", "listo", "system.ai.sandbox disponible: el agente del Lab 3 tendrá run_code")
+except Exception:
+    verificar("Databricks Sandbox (opcional)", "opcional",
+              "No existe system.ai.sandbox en este workspace. Activa el preview 'Databricks Sandbox' (en algunas regiones aún "
+              "no está disponible). El Lab 3 funciona sin él: el agente no tendrá run_code.")
+
 # COMMAND ----------
 
 # MAGIC %md ## Paso 6 – Permisos del grupo
@@ -438,7 +446,7 @@ config_guardar("lab_grupo", GRUPO)
 # COMMAND ----------
 
 filas = "".join(
-    f"<tr><td>{c}</td><td style='color:{'#00A972' if e == 'listo' else '#FF3621'};font-weight:700'>"
+    f"<tr><td>{c}</td><td style='color:{'#00A972' if e == 'listo' else '#B26B00' if e == 'opcional' else '#FF3621'};font-weight:700'>"
     f"{'✓ listo' if e == 'listo' else '⚠ ' + e}</td><td>{d}</td></tr>" for c, e, d in VERIFICACION)
 displayHTML(f"""
 <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1B3139">
@@ -450,7 +458,7 @@ displayHTML(f"""
 <h3 style="margin:18px 0 6px">Revisa a mano en Settings → Previews (no se pueden validar por API)</h3>
 <ul style="font-size:14px;line-height:1.6">
 <li><b>Unity Gateway Service Policies</b> (Lab 4: guardrails de PII y jailbreak)</li>
-<li><b>Databricks Sandbox</b> (Lab 3: el agente ejecuta código)</li>
+<li><b>Databricks Sandbox</b> (Lab 3, <b>opcional</b>: el agente ejecuta código; arriba se valida por API)</li>
 <li><b>Managed MCP Servers</b> (Labs 1–3) y, para el módulo opcional, <b>Unity Gateway skills</b></li>
 <li><b>Agent Memory Sessions</b> (Lab 3: memoria e historial del agente; arriba se valida por API)</li>
 </ul>

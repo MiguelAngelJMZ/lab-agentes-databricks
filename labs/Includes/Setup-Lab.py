@@ -87,6 +87,15 @@ def modelo_chat(modelo=None, gateway=False):
     return ChatOpenAI(model=modelo or MODELO_ENDPOINT, base_url=base, api_key=token())
 
 
+def sandbox_disponible():
+    """True si el workspace tiene Databricks Sandbox (system.ai.sandbox). Es opcional: sin él, el agente no tiene run_code."""
+    try:
+        w.api_client.do("GET", "/api/2.1/unity-catalog/mcp-services/system.ai.sandbox")
+        return True
+    except Exception:
+        return False
+
+
 def mostrar_tools(tools):
     filas = "".join(
         f"<tr><td style='padding:6px 10px;border-top:1px solid #ECEAE6'><code>{t.name}</code></td>"

@@ -13,7 +13,7 @@ Tu agente tendrá cinco fuentes:
 |---|---|---|
 | `incidencias_abiertas` | Tu UC function (Lab 1) | `agentbricks tools add uc-function` |
 | Genie "Mesa de servicio" | Genie Agent | `agentbricks tools add genie-agent` |
-| `run_code` | Databricks Sandbox | `agentbricks tools add sandbox` |
+| `run_code` | Databricks Sandbox (*opcional*) | `agentbricks tools add sandbox`, solo si tu workspace lo tiene |
 | `calcular_sla`, `estado_plataforma_juego` | Tu MCP en Apps (Lab 2) | por código: `agent/mcps.py` |
 | `remember`, `recall` | Memoria de largo plazo | viene en la plantilla |
 
@@ -57,7 +57,7 @@ source = {kind = "uc_function", function = "la_tinka_taller.ag_<usuario>.inciden
 [[tools]]                         # el Genie que ya conocen
 id = "genie_agent"
 source = {kind = "genie_agent", space_id = "<id>"}
-[[tools]]                         # el agente ejecuta código
+[[tools]]                         # el agente ejecuta código (opcional: solo si existe system.ai.sandbox)
 id = "sandbox"
 source = {kind = "sandbox", service = "system.ai.sandbox"}
 
@@ -90,6 +90,8 @@ except Exception:
     print("⚠ No encuentro tu app del Lab 2. Termina el Lab 2 o pide al instructor la URL del MCP compartido.")
 
 PERFIL = "<perfil>"  # el que creaste en el kickoff con `databricks auth login`
+LINEA_SANDBOX = (f"agentbricks -p {PERFIL} tools add sandbox" if sandbox_disponible() else
+                 "# (sin sandbox: Databricks Sandbox no está disponible en este workspace; el agente funciona sin run_code)")
 comandos = f"""# 0. Una carpeta de trabajo
 mkdir -p ~/lab-agentes && cd ~/lab-agentes
 
@@ -100,7 +102,7 @@ cd {AGENTE}
 # 2. Tools gestionadas
 agentbricks -p {PERFIL} tools add uc-function {CATALOGO}.{MI_ESQUEMA}.incidencias_abiertas
 agentbricks -p {PERFIL} tools add genie-agent {GENIE_ID}
-agentbricks -p {PERFIL} tools add sandbox
+{LINEA_SANDBOX}
 
 # 3. El modelo pasa por tu model service (lo usarás en el Lab 4)
 agentbricks -p {PERFIL} experimental models bind {MODELO_SERVICIO} --default {MODELO_SYSTEM}
@@ -141,7 +143,7 @@ Abre `http://localhost:8000` y pregunta:
 
 > *¿Cuántas P1 llevan más de 24 horas abiertas, qué equipos concentran más y cuál es el estado de SLA de la más antigua?*
 
-Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` (sandbox) → `calcular_sla` (tu MCP). Las trazas locales quedan en la URL **Traces** que imprime `dev`.
+Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` (sandbox) → `calcular_sla` (tu MCP). Sin sandbox, la cadena es `incidencias_abiertas` → `calcular_sla`. Las trazas locales quedan en la URL **Traces** que imprime `dev`.
 ::nota En dev la memoria está apagada | <code>agentbricks dev</code> corre con la memoria de largo plazo apagada y el historial en memoria del proceso. La memoria real aparece al desplegar.
 === md
 ## D. Desplegar

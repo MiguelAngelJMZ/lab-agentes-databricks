@@ -98,11 +98,17 @@ import requests
 chequeos = []
 
 
-def chequear(nombre, funcion):
+def chequear(nombre, funcion, opcional=False):
     try:
         chequeos.append((nombre, True, funcion()))
     except Exception as e:
-        chequeos.append((nombre, False, str(e)[:180]))
+        chequeos.append((nombre, None if opcional else False, str(e)[:180]))
+
+
+def _sandbox():
+    if not sandbox_disponible():
+        raise RuntimeError("No está en este workspace: el agente del Lab 3 funcionará sin run_code. Avísale al instructor.")
+    return "system.ai.sandbox disponible"
 
 
 chequear("Tu schema", lambda: spark.sql(f"SHOW FUNCTIONS IN `{CATALOGO}`.`{MI_ESQUEMA}`").count() >= 0 and f"{CATALOGO}.{MI_ESQUEMA}")
@@ -118,10 +124,13 @@ chequear("Modelo", lambda: w.api_client.do("POST", f"/serving-endpoints/{MODELO_
 chequear("Databricks Apps", lambda: f"puedes listar apps ({len(list(w.apps.list()))} en el workspace)")
 chequear("Memoria y sesiones de agentes", lambda: [w.api_client.do("GET", f"/api/2.0/agents/{r}", query={"page_size": 1})
                                                   for r in ("memory-stores", "session-stores")] and "APIs disponibles (preview Agent Memory Sessions)")
+chequear("Databricks Sandbox (opcional)", _sandbox, opcional=True)
 spark.sql(f"DROP FUNCTION IF EXISTS `{CATALOGO}`.`{MI_ESQUEMA}`.ping")
 
-filas = "".join(f"<tr><td style='padding:5px 12px'>{n}</td><td style='padding:5px 12px;font-weight:700;color:{'#00A972' if okk else '#FF3621'}'>"
-                f"{'✓' if okk else '✗'}</td><td style='padding:5px 12px;font-size:12px'>{d}</td></tr>" for n, okk, d in chequeos)
+COLOR = {True: "#00A972", None: "#B26B00", False: "#FF3621"}
+ICONO = {True: "✓", None: "⚠", False: "✗"}
+filas = "".join(f"<tr><td style='padding:5px 12px'>{n}</td><td style='padding:5px 12px;font-weight:700;color:{COLOR[okk]}'>"
+                f"{ICONO[okk]}</td><td style='padding:5px 12px;font-size:12px'>{d}</td></tr>" for n, okk, d in chequeos)
 displayHTML(f"<table style='font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-collapse:collapse'>{filas}</table>")
 === md
 #### B.2 Solo versión A: tu laptop

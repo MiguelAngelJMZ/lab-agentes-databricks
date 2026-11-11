@@ -14,7 +14,7 @@
 # MAGIC |---|---|
 # MAGIC | `incidencias_abiertas` | Tu UC function (Lab 1) |
 # MAGIC | Genie "Mesa de servicio" | Genie Agent |
-# MAGIC | `run_code` | Databricks Sandbox |
+# MAGIC | `run_code` | Databricks Sandbox (*opcional*: solo si tu workspace lo tiene) |
 # MAGIC | `calcular_sla`, `estado_plataforma_juego` | Tu MCP en Apps (Lab 2) |
 # MAGIC | `remember`, `recall` | Memoria de largo plazo |
 # MAGIC
@@ -231,6 +231,8 @@ mostrar_proyecto()
 # MAGIC </script>
 # MAGIC
 # MAGIC Cada comando valida el recurso y lo declara en `agent.toml`. El último hace que el modelo pase por **tu** model service, que gobernarás en el Lab 4.
+# MAGIC
+# MAGIC El **sandbox es opcional**: la celda lo agrega solo si tu workspace tiene Databricks Sandbox (`system.ai.sandbox`). Si no existe, lo deja fuera, porque una tool declarada que no responde impide que el agente arranque.
 
 # COMMAND ----------
 
@@ -239,8 +241,13 @@ if "incidencias_abiertas" not in toml_actual:
     agentbricks("tools", "add", "uc-function", f"{CATALOGO}.{MI_ESQUEMA}.incidencias_abiertas")
 if "genie_agent" not in toml_actual:
     agentbricks("tools", "add", "genie-agent", GENIE_ID)
-if 'kind = "sandbox"' not in toml_actual:
+SANDBOX = sandbox_disponible()
+if SANDBOX and 'kind = "sandbox"' not in toml_actual:
     agentbricks("tools", "add", "sandbox")
+elif not SANDBOX and 'kind = "sandbox"' in toml_actual:
+    agentbricks("tools", "remove", "sandbox")  # declarado pero sin servicio: el agente no arrancaría
+if not SANDBOX:
+    print("• Sin sandbox: Databricks Sandbox no está disponible en este workspace. Tu agente funcionará sin run_code.\n")
 if "model_services" not in toml_actual:
     agentbricks("experimental", "models", "bind", MODELO_SERVICIO, "--default", MODELO_SYSTEM)
 print(open(f"{PROYECTO}/agent.toml").read())
@@ -478,7 +485,7 @@ displayHTML(f"<div style='font-size:15px'>Abre tu agente: <a href='{app_agente.u
 # MAGIC
 # MAGIC > *¿Cuántas P1 llevan más de 24 horas abiertas, qué equipos concentran más y cuál es el estado de SLA de la más antigua?*
 # MAGIC
-# MAGIC Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` → `calcular_sla`, y al final la lista de fuentes usadas.
+# MAGIC Deberías ver tres tools en cadena: `incidencias_abiertas` → `run_code` → `calcular_sla`, y al final la lista de fuentes usadas. Si tu workspace no tiene sandbox, la cadena es `incidencias_abiertas` → `calcular_sla` y el conteo lo hace el modelo.
 
 # COMMAND ----------
 
