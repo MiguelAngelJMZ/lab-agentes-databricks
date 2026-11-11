@@ -566,12 +566,20 @@ def probar_reto():
     texto = _texto_final(mensajes).lower()
     uso_regla = any(t.endswith("__incidencias_en_riesgo_sla") for t in tools_usadas(mensajes))
     acerto = bool(re.search(rf"(?<![\d.,]){ESPERADO}(?![\d.,])", texto)) or _EN_LETRAS.get(ESPERADO, "#") in texto
+    numeros = [m for m in re.findall(r"(?<![\w.,])\d+(?![\w.,])", texto)]
+    dijo = f", el agente dijo <b>{numeros[0]}</b>" if numeros and not acerto else ""
     filas = [("Usó tu función <code>incidencias_en_riesgo_sla</code>", uso_regla),
-             (f"Respondió el número correcto (<b>{ESPERADO}</b>)", acerto)]
+             (f"Respondió el número correcto: esperado <b>{ESPERADO}</b>{dijo}", acerto)]
     html = "".join(f"<div style='font-size:15px;margin:4px 0'>{'✅' if ok_ else '❌'} {t}</div>" for t, ok_ in filas)
     if uso_regla and acerto:
-        html += "<div style='font-size:16px;font-weight:700;color:#00A972;margin-top:6px'>✓ Reto logrado</div>"
-    displayHTML(html)
+        pista = "<div style='font-size:16px;font-weight:700;color:#00A972;margin-top:6px'>✓ Reto logrado</div>"
+    elif uso_regla:
+        pista = "→ El agente eligió bien la tool, pero tu función devuelve otras incidencias: revisa <code>TU_CONDICION</code> en F.2."
+    elif acerto:
+        pista = "→ Acertó sin tu función: fue suerte. Crea la función en F.2 para que la respuesta no dependa del LLM."
+    else:
+        pista = "→ Sin la regla, el agente usa su propia definición de «en riesgo». Encapsúlala en F.2."
+    displayHTML(html + (pista if pista.startswith("<div") else f"<div style='font-size:14px;color:#5A6F77;margin-top:6px'>{pista}</div>"))
 
 
 probar_reto()
