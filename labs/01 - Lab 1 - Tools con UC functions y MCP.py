@@ -603,10 +603,16 @@ probar_reto()
 # MAGIC </script>
 # MAGIC
 # MAGIC Completa la plantilla de abajo. El nombre y las columnas ya están; tú escribes:
-# MAGIC - **`TU_CONDICION`**: la regla en SQL. El umbral llega como porcentaje en el parámetro `incidencias_en_riesgo_sla.umbral_pct` (80 por defecto).
+# MAGIC - **`TU_CONDICION`**: la regla en SQL, comparando **columnas de cada incidencia**. Tienes `horas_abierta` (horas que lleva abierta), `sla_horas` (horas comprometidas) y el umbral en el parámetro `incidencias_en_riesgo_sla.umbral_pct` (80 por defecto). Son dos condiciones unidas con `AND`:
+# MAGIC   1. Ya consumió al menos el umbral: `horas_abierta` contra `sla_horas` multiplicado por el porcentaje.
+# MAGIC   2. Todavía no vence: `horas_abierta` contra `sla_horas`.
 # MAGIC - **Los dos `COMMENT`**: qué significa "en riesgo" y para qué sirve el umbral. Explícale al LLM la definición: es lo único que sabrá de la regla.
 # MAGIC
-# MAGIC Después corre `probar_reto()` en la celda siguiente.
+# MAGIC Al crear la función, la celda cuenta las filas y te avisa si la regla no da el número esperado. Cuando salga ✓, corre `probar_reto()` en la celda siguiente.
+# MAGIC
+# MAGIC <div style="border:1px solid #DCE0E2; border-left:4px solid #FF3621; border-radius:10px; background:#FFF5F3; padding:12px 16px; margin:12px 0; color:#0B2026; font-size:14px; line-height:1.55;">
+# MAGIC <strong style="color:#FF3621;">Un error común</strong><br><code>AND umbral_pct = 80</code> no filtra incidencias: compara el parámetro consigo mismo y siempre es verdadero, así que devuelve todas las abiertas. La condición tiene que usar <code>horas_abierta</code> y <code>sla_horas</code>.
+# MAGIC </div>
 
 # COMMAND ----------
 
@@ -626,8 +632,17 @@ if "TU_CONDICION" in MI_FUNCION or "TU DESCRIPCIÓN" in MI_FUNCION:
     print("✎ Todavía no editas la plantilla: reemplaza TU_CONDICION y las dos TU DESCRIPCIÓN y vuelve a correr la celda.")
 else:
     spark.sql(MI_FUNCION)
-    display(spark.sql(f"SELECT * FROM {CATALOGO}.{MI_ESQUEMA}.incidencias_en_riesgo_sla() ORDER BY pct_sla_consumido DESC"))
-    print(f"✓ Función creada. Deberías ver {ESPERADO} filas; corre la celda siguiente para probar el reto.")
+    filas = spark.sql(f"SELECT * FROM {CATALOGO}.{MI_ESQUEMA}.incidencias_en_riesgo_sla() ORDER BY pct_sla_consumido DESC")
+    display(filas)
+    n = filas.count()
+    if n == ESPERADO:
+        print(f"✓ Función creada y la regla da {n} incidencias en riesgo. Corre la celda siguiente para probar el reto.")
+    else:
+        vencidas = filas.where("horas_abierta >= sla_horas").count()
+        print(f"✗ La función devuelve {n} filas y la regla correcta da {ESPERADO}.")
+        if vencidas:
+            print(f"  {vencidas} de esas filas ya vencieron su SLA (horas_abierta >= sla_horas): falta la condición «todavía no vence».")
+        print("  Revisa TU_CONDICION: debe comparar horas_abierta con sla_horas (lee la alerta de arriba) y vuelve a correr la celda.")
 
 # COMMAND ----------
 
