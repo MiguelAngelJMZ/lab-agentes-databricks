@@ -18,7 +18,7 @@ Laboratorio técnico (2–3 h) para construir agentes en Databricks de abajo hac
 
 ## Puesta en marcha (resumen)
 
-1. Crear el grupo de participantes y activar los previews (*Managed MCP Servers*, *Databricks Sandbox*, *Unity Gateway Service Policies*).
+1. Crear el grupo de participantes y activar los previews (*Managed MCP Servers*, *Databricks Sandbox*, *Agent Memory Sessions*, *Unity Gateway Service Policies*).
 2. Importar esta carpeta al workspace (con `setup/` y `labs/` como hermanas).
 3. Correr `setup/00_setup_lab` en Serverless con `grupo_participantes` → *Run all*.
 4. Ensayar con un usuario no admin: correr los Labs 0 → 4 y medir tiempos.

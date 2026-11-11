@@ -334,9 +334,11 @@ except Exception as e:
 
 try:
     api("GET", "/api/2.0/agents/memory-stores", query={"page_size": 1})
-    verificar("Memoria de agentes (Agent Bricks)", "listo", "API disponible")
+    api("GET", "/api/2.0/agents/session-stores", query={"page_size": 1})
+    verificar("Memoria y sesiones de agentes (Agent Bricks)", "listo", "APIs de memory stores y session stores disponibles")
 except Exception as e:
-    verificar("Memoria de agentes (Agent Bricks)", "revisar", f"No pude consultar la API: {str(e)[:120]}")
+    verificar("Memoria y sesiones de agentes (Agent Bricks)", "falta",
+              f"Activa el preview 'Agent Memory Sessions' (Lab 3: memoria e historial del agente). Detalle: {str(e)[:120]}")
 
 # COMMAND ----------
 
@@ -450,6 +452,7 @@ displayHTML(f"""
 <li><b>Unity Gateway Service Policies</b> (Lab 4: guardrails de PII y jailbreak)</li>
 <li><b>Databricks Sandbox</b> (Lab 3: el agente ejecuta código)</li>
 <li><b>Managed MCP Servers</b> (Labs 1–3) y, para el módulo opcional, <b>Unity Gateway skills</b></li>
+<li><b>Agent Memory Sessions</b> (Lab 3: memoria e historial del agente; arriba se valida por API)</li>
 </ul>
 <p style="font-size:14px">Genie: <a href="{HOST}/genie/rooms/{GENIE_ID}" target="_blank">{NOMBRE_GENIE}</a> ·
 Notebooks: <code>/Workspace/Users/&lt;correo&gt;/{CARPETA_LAB}</code> (o <code>/Workspace/Shared/{CARPETA_LAB}</code>)</p>

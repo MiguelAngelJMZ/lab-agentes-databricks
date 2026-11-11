@@ -116,6 +116,8 @@ chequear("Databricks SQL (MCP)", lambda: ", ".join(t["name"] for t in w.api_clie
 chequear("Modelo", lambda: w.api_client.do("POST", f"/serving-endpoints/{MODELO_ENDPOINT}/invocations", body={
     "messages": [{"role": "user", "content": "Responde solo: listo"}], "max_tokens": 10})["choices"][0]["message"]["content"])
 chequear("Databricks Apps", lambda: f"puedes listar apps ({len(list(w.apps.list()))} en el workspace)")
+chequear("Memoria y sesiones de agentes", lambda: [w.api_client.do("GET", f"/api/2.0/agents/{r}", query={"page_size": 1})
+                                                  for r in ("memory-stores", "session-stores")] and "APIs disponibles (preview Agent Memory Sessions)")
 spark.sql(f"DROP FUNCTION IF EXISTS `{CATALOGO}`.`{MI_ESQUEMA}`.ping")
 
 filas = "".join(f"<tr><td style='padding:5px 12px'>{n}</td><td style='padding:5px 12px;font-weight:700;color:{'#00A972' if okk else '#FF3621'}'>"
