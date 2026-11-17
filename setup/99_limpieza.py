@@ -12,6 +12,7 @@
 # MAGIC | Stores de memoria y sesiones, experimento de trazas del agente | Solo los nombres **exactos** que declara ese `agent.toml` |
 # MAGIC | Experimento de trazas de los labs `lab-agentes-trazas` | Su ruta exacta: `/Users/<correo>/lab-agentes-trazas` (lo crea `Includes/Setup-Lab`) |
 # MAGIC | Código desplegado del agente | La carpeta `agentbricks_deployments/agent-bricks-ag-<usuario>` del mismo `agent.toml` |
+# MAGIC | Runtime Store del agente | `runtime-stores/agent-bricks-ag-<usuario>`, si el agente es del lab o si su app ya no existe (huérfano: bloquearía el próximo deploy) |
 # MAGIC | App del MCP `mcp-<usuario>` | Su código está en `lab-agentes/mcp-server` o tiene la descripción que le pone el Lab 2 |
 # MAGIC | Schema `ag_<usuario>` (CASCADE) | Tiene el comentario que le pone el lab ("Espacio de … en el lab de agentes") |
 # MAGIC | Carpeta `Lab Agentes La Tinka` (del usuario y de Shared) | Contiene `Includes/_config.py`, que escribe el setup |
@@ -81,6 +82,16 @@ def listar_stores(tipo):
             return items
 
 
+def runtime_store(app_name):
+    """El Runtime Store que agentbricks deploy crea para la app (o None). Si se borra la app sin él, queda huérfano
+    y el siguiente deploy falla con "Runtime Store ... does not belong to this app identity"."""
+    try:
+        st = w.api_client.do("GET", f"/api/2.0/agents/runtime-stores/{app_name}")
+        return st if ((st.get("owner") or {}).get("app") or {}).get("name") == app_name else None
+    except Exception:
+        return None
+
+
 def ruta_codigo(app):
     d = getattr(app, "active_deployment", None) or getattr(app, "pending_deployment", None)
     return (d.source_code_path if d else None) or app.default_source_code_path
@@ -129,6 +140,13 @@ for u in usuarios:
     # Agente: el agent.toml del despliegue (o del proyecto de 03B) dice qué recursos son suyos.
     toml_txt = leer(f"{despliegue}/agent.toml") or leer(f"{trabajo}/{agente}/agent.toml")
     del_lab = bool(toml_txt) and marca_esquema in toml_txt
+    # Runtime Store: se borra antes que la app (como hace el CLI) si el agente es del lab o si su app ya no existe.
+    if runtime_store(app_agente):
+        if del_lab or app_agente not in apps:
+            borrar(u, f"runtime store {app_agente}" + ("" if del_lab else " (huérfano: su app ya no existe)"),
+                   lambda n=app_agente: w.api_client.do("DELETE", f"/api/2.0/agents/runtime-stores/{n}"))
+        else:
+            omitir(u, f"runtime store {app_agente}", "su app existe y no es la del lab")
     if app_agente in apps:
         if del_lab and ruta_codigo(apps[app_agente]) == despliegue:
             borrar(u, f"app {app_agente}", lambda n=app_agente: w.apps.delete(n))

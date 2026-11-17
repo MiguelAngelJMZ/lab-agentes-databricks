@@ -11,6 +11,7 @@ Este notebook borra **solo lo que tú construiste** durante el laboratorio, para
 |---|---|
 | Tu agente `agent-bricks-ag-<usuario>` (Lab 3) | Su código está en tu `agentbricks_deployments/` y su `agent.toml` usa tu schema del lab |
 | Sus stores de memoria y sesiones y su experimento de trazas | Solo los nombres **exactos** que declara ese `agent.toml` |
+| Su Runtime Store | `agent-bricks-ag-<usuario>`, si tu agente es del lab o si su app ya no existe (huérfano: bloquearía tu próximo deploy) |
 | Tu servidor MCP `mcp-<usuario>` (Lab 2) | Su código está en `lab-agentes/mcp-server` o tiene la descripción que le pone el Lab 2 |
 | Tu schema `ag_<usuario>` con lo que creaste (funciones, model service) | Tiene el comentario que le pone el lab ("Espacio de … en el lab de agentes") |
 | Tu carpeta de trabajo `lab-agentes` (servidor MCP y proyecto del agente) | Solo las subcarpetas del lab; la carpeta solo si queda vacía |
@@ -85,6 +86,16 @@ def mis_stores():
     return nombres
 
 
+def runtime_store(app_name):
+    """El Runtime Store que agentbricks deploy crea para tu app (o None). Si se borra la app sin él, queda huérfano
+    y el siguiente deploy falla con "Runtime Store ... does not belong to this app identity"."""
+    try:
+        st = w.api_client.do("GET", f"/api/2.0/agents/runtime-stores/{app_name}")
+        return st if ((st.get("owner") or {}).get("app") or {}).get("name") == app_name else None
+    except Exception:
+        return None
+
+
 def ruta_codigo(app):
     d = getattr(app, "active_deployment", None) or getattr(app, "pending_deployment", None)
     return (d.source_code_path if d else None) or app.default_source_code_path
@@ -103,6 +114,13 @@ PLAN, OMITIDOS = [], []
 toml_txt = leer(f"{DESPLIEGUE}/agent.toml") or leer(f"{TRABAJO}/{AGENTE}/agent.toml")
 es_del_lab = bool(toml_txt) and MARCA in toml_txt
 agente = app_o_nada(AGENTE_APP)
+# Runtime Store: se borra antes que la app (como hace el CLI) si tu agente es del lab o si su app ya no existe.
+if runtime_store(AGENTE_APP):
+    if es_del_lab or not agente:
+        PLAN.append((f"runtime store {AGENTE_APP}" + ("" if es_del_lab else " (huérfano: su app ya no existe)"),
+                     lambda: w.api_client.do("DELETE", f"/api/2.0/agents/runtime-stores/{AGENTE_APP}")))
+    else:
+        OMITIDOS.append((f"runtime store {AGENTE_APP}", "su app existe y no es la del lab"))
 if agente:
     if es_del_lab and ruta_codigo(agente) == DESPLIEGUE:
         PLAN.append((f"app {AGENTE_APP}", lambda: w.apps.delete(AGENTE_APP)))

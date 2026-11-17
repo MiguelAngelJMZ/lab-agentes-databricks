@@ -326,7 +326,7 @@ else:
 2. **New chat** y pregunta: *"¿Qué equipos tienen más P1 abiertas?"* → `recall` al inicio y respuesta en tabla, sin emojis.
 3. En la tarjeta **Memory** del chat verás la entrada que guardó.
 === md
-::nota Si te atoras | Los logs del agente: <code>agentbricks("deployments", "logs", AGENTE_APP)</code>. Errores comunes: olvidar la celda B.2 (el MCP responde 401/403) o un error de sintaxis en <code>agent/agent.py</code> (el deploy falla al arrancar).
+::nota Si te atoras | Los logs del agente: <code>agentbricks("deployments", "logs", AGENTE_APP)</code>. Errores comunes: olvidar la celda B.2 (el MCP responde 401/403), un error de sintaxis en <code>agent/agent.py</code> (el deploy falla al arrancar) o <i>"Runtime Store … does not belong to this app identity"</i>: quedó un store de un despliegue anterior; corre <code>99 - Limpiar mis recursos del laboratorio</code> y vuelve a desplegar.
 === md
 ## Conclusión
 

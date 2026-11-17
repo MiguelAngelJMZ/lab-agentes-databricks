@@ -590,7 +590,7 @@ else:
 
 # MAGIC %md-sandbox
 # MAGIC <div style="border:1px solid #DCE0E2; border-left:4px solid #1B5162; border-radius:10px; background:#F9F7F4; padding:12px 16px; margin:12px 0; color:#0B2026; font-size:14px; line-height:1.55;">
-# MAGIC <strong style="color:#1B5162;">Si te atoras</strong><br>Los logs del agente: <code>agentbricks("deployments", "logs", AGENTE_APP)</code>. Errores comunes: olvidar la celda B.2 (el MCP responde 401/403) o un error de sintaxis en <code>agent/agent.py</code> (el deploy falla al arrancar).
+# MAGIC <strong style="color:#1B5162;">Si te atoras</strong><br>Los logs del agente: <code>agentbricks("deployments", "logs", AGENTE_APP)</code>. Errores comunes: olvidar la celda B.2 (el MCP responde 401/403), un error de sintaxis en <code>agent/agent.py</code> (el deploy falla al arrancar) o <i>"Runtime Store … does not belong to this app identity"</i>: quedó un store de un despliegue anterior; corre <code>99 - Limpiar mis recursos del laboratorio</code> y vuelve a desplegar.
 # MAGIC </div>
 
 # COMMAND ----------
