@@ -7,8 +7,9 @@ Laboratorio técnico (2–3 h) para construir agentes en Databricks de abajo hac
 | Carpeta / archivo | Qué es |
 |---|---|
 | `setup/00_setup_lab` | **El único notebook que corre la persona administradora** (una vez, días antes). Valida el ambiente, reutiliza o crea datos y Genie, da permisos al grupo y deja a cada participante su schema y su copia de los notebooks |
-| `setup/99_limpieza` | Borra lo que crearon los participantes (simular → borrar) |
+| `setup/99_limpieza` | El admin borra lo que crearon los participantes del grupo (simular → borrar) |
 | `labs/00 … 05` | Notebooks del laboratorio (estilo *lecture + demo*, en español) |
+| `labs/99 - Limpiar mis recursos del laboratorio` | Cada participante borra solo lo que construyó, para volver a practicar (simular → borrar). Conserva los notebooks |
 | `labs/Includes/` | Setup común de los labs (`Setup-Lab`) y la configuración que escribe el setup (`_config.py`) |
 | `labs/mcp-server/` | Servidor MCP de la mesa de servicio (plantilla oficial *MCP Server Starter* + tools de negocio) |
 | `labs/agente-referencia/` | `aplicar_referencia.py`: conecta el MCP y agrega el prompt en español al proyecto de `agentbricks init` |

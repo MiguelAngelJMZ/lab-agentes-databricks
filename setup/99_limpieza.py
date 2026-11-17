@@ -61,10 +61,11 @@ def leer(ruta):
 
 
 def hijos(ruta):
+    """Contenido de una carpeta, o None si no se pudo listar (entonces no se borra)."""
     try:
         return [o.path for o in w.workspace.list(ruta)]
     except Exception:
-        return []
+        return None
 
 
 def listar_stores(tipo):
@@ -187,8 +188,11 @@ for u in usuarios:
             del_trabajo.append(proyecto)
         for c in del_trabajo:
             borrar(u, f"carpeta {c}", lambda c=c: w.workspace.delete(c, recursive=True))
-        resto = [h for h in hijos(trabajo) if h not in del_trabajo]
-        if resto:
+        contenido = hijos(trabajo)
+        resto = None if contenido is None else [h for h in contenido if h not in del_trabajo]
+        if resto is None:
+            omitir(u, f"carpeta {trabajo}", "no pude listar su contenido")
+        elif resto:
             omitir(u, f"carpeta {trabajo}", f"tiene otro contenido: {', '.join(h.rsplit('/', 1)[-1] for h in resto)[:120]}")
         else:
             borrar(u, f"carpeta {trabajo} (queda vacía)", lambda c=trabajo: w.workspace.delete(c, recursive=True))
