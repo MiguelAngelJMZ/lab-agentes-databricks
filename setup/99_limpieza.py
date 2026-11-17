@@ -9,7 +9,8 @@
 # MAGIC | Se borra | Comprobación |
 # MAGIC |---|---|
 # MAGIC | App del agente `agent-bricks-ag-<usuario>` | Su código está en `agentbricks_deployments/agent-bricks-ag-<usuario>` y su `agent.toml` usa el schema `<catálogo>.ag_<usuario>` |
-# MAGIC | Stores de memoria y sesiones, experimento de trazas | Solo los nombres **exactos** que declara ese `agent.toml` |
+# MAGIC | Stores de memoria y sesiones, experimento de trazas del agente | Solo los nombres **exactos** que declara ese `agent.toml` |
+# MAGIC | Experimento de trazas de los labs `lab-agentes-trazas` | Su ruta exacta: `/Users/<correo>/lab-agentes-trazas` (lo crea `Includes/Setup-Lab`) |
 # MAGIC | Código desplegado del agente | La carpeta `agentbricks_deployments/agent-bricks-ag-<usuario>` del mismo `agent.toml` |
 # MAGIC | App del MCP `mcp-<usuario>` | Su código está en `lab-agentes/mcp-server` o tiene la descripción que le pone el Lab 2 |
 # MAGIC | Schema `ag_<usuario>` (CASCADE) | Tiene el comentario que le pone el lab ("Espacio de … en el lab de agentes") |
@@ -171,6 +172,12 @@ for u in usuarios:
                 omitir(u, f"schema {CATALOGO}.{esquema}", f"no tiene el comentario del lab ({comentario[:60]!r})")
         except Exception:
             pass  # no existe
+
+    # Experimento de trazas del lab (lo crea Includes/Setup-Lab)
+    exp_lab = f"{casa}/lab-agentes-trazas"
+    if existe(exp_lab):
+        e_lab = w.experiments.get_by_name(exp_lab).experiment
+        borrar(u, f"experimento {exp_lab}", lambda i=e_lab.experiment_id: w.experiments.delete_experiment(i))
 
     # Carpetas
     carpeta_lab = f"{casa}/{CARPETA_LAB}"

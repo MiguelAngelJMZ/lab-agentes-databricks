@@ -133,6 +133,26 @@ def tools_usadas(mensajes):
     return [c["name"] for m in mensajes for c in (getattr(m, "tool_calls", None) or [])]
 
 
+# Trazas y evaluaciones van a un experimento propio del lab, no al del notebook: Databricks borra el
+# experimento del notebook cuando el notebook se reemplaza o se borra (actualizaciones, limpieza).
+EXPERIMENTO_LAB = f"/Users/{YO}/lab-agentes-trazas"
+
+
+def activar_experimento():
+    import mlflow
+    cliente = mlflow.MlflowClient()
+    exp = cliente.get_experiment_by_name(EXPERIMENTO_LAB)
+    if exp and exp.lifecycle_stage == "deleted":
+        cliente.restore_experiment(exp.experiment_id)
+    return mlflow.set_experiment(EXPERIMENTO_LAB)
+
+
+try:
+    _exp = activar_experimento()
+    _fila_exp = (f"<a href='{HOST}/ml/experiments/{_exp.experiment_id}' target='_blank'><code>{EXPERIMENTO_LAB}</code></a>")
+except Exception as e:
+    _fila_exp = f"⚠ No pude activar <code>{EXPERIMENTO_LAB}</code>: {str(e)[:120]}. Las trazas irán al experimento del notebook."
+
 displayHTML(f"""
 <div style="font-family:-apple-system,Segoe UI,sans-serif;border:1px solid #DCE0E2;border-radius:10px;padding:12px 16px;color:#1B3139;font-size:14px">
 <b>Listo, {YO}.</b> Estos son tus recursos en el laboratorio:
@@ -143,4 +163,5 @@ displayHTML(f"""
 <tr><td style="padding:2px 12px 2px 0">Modelo</td><td><code>{MODELO_ENDPOINT}</code> · <code>{MODELO_SYSTEM}</code></td></tr>
 <tr><td style="padding:2px 12px 2px 0">App MCP (Lab 2)</td><td><code>{MCP_APP}</code></td></tr>
 <tr><td style="padding:2px 12px 2px 0">Agente (Lab 3)</td><td><code>{AGENTE}</code> → app <code>{AGENTE_APP}</code></td></tr>
+<tr><td style="padding:2px 12px 2px 0">Trazas (MLflow)</td><td>{_fila_exp}</td></tr>
 </table></div>""")

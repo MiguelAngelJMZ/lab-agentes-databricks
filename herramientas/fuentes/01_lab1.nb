@@ -254,7 +254,7 @@ Debajo de cada celda aparece la traza de MLflow. Ábrela y recorre:
 2. El **span de la tool**: argumentos, resultado y latencia.
 3. Los **tokens** de entrada y salida de cada llamada.
 
-Las trazas quedan en el experimento del notebook (ícono de matraz en la barra derecha).
+Las trazas quedan en tu experimento del lab, `/Users/<tu correo>/lab-agentes-trazas`: el link está en la tabla de la celda de setup, al inicio del notebook.
 === md
 ::nota Sin código: AI Playground | <b>AI Playground</b> → elige un modelo con tools → <b>Tools</b> → <b>+ Add tool</b> → <i>Unity Catalog function</i> (tu función) y <i>Genie</i>. Pregunta "¿qué P1 están abiertas?" y verifica que llama a tu función.
 === md

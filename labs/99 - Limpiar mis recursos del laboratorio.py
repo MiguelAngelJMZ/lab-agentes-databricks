@@ -17,6 +17,7 @@
 # MAGIC | Tu servidor MCP `mcp-<usuario>` (Lab 2) | Su código está en `lab-agentes/mcp-server` o tiene la descripción que le pone el Lab 2 |
 # MAGIC | Tu schema `ag_<usuario>` con lo que creaste (funciones, model service) | Tiene el comentario que le pone el lab ("Espacio de … en el lab de agentes") |
 # MAGIC | Tu carpeta de trabajo `lab-agentes` (servidor MCP y proyecto del agente) | Solo las subcarpetas del lab; la carpeta solo si queda vacía |
+# MAGIC | Tu experimento de trazas `lab-agentes-trazas` (Labs 1 y 5) | Su ruta exacta: `/Users/<tu correo>/lab-agentes-trazas` |
 # MAGIC
 # MAGIC **No se borra:** esta carpeta con los notebooks del lab, los datos de `mesa_servicio`, el Genie, el warehouse ni nada de otras personas. Lo que no pase la comprobación aparece en la lista de **omitidos** con el motivo.
 # MAGIC
@@ -175,7 +176,12 @@ else:
     else:
         OMITIDOS.append((f"schema {CATALOGO}.{MI_ESQUEMA}", f"no tiene el comentario del lab ({comentario[:60]!r})"))
 
-# 4. Tu carpeta de trabajo: solo las subcarpetas del lab; la carpeta, si queda vacía
+# 4. Tu experimento de trazas del lab (Labs 1 y 5)
+if existe(EXPERIMENTO_LAB):
+    exp_lab = w.experiments.get_by_name(EXPERIMENTO_LAB).experiment
+    PLAN.append((f"experimento {EXPERIMENTO_LAB}", lambda i=exp_lab.experiment_id: w.experiments.delete_experiment(i)))
+
+# 5. Tu carpeta de trabajo: solo las subcarpetas del lab; la carpeta, si queda vacía
 if existe(TRABAJO):
     del_lab = []
     if existe(CARPETA_MCP) and "mcp-mesa-servicio" in (leer(f"{CARPETA_MCP}/server/tools.py") or ""):

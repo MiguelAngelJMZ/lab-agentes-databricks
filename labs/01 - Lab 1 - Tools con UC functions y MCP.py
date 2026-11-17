@@ -503,7 +503,7 @@ mensajes = preguntar(agente, "¿Cómo evolucionó la satisfacción promedio de l
 # MAGIC 2. El **span de la tool**: argumentos, resultado y latencia.
 # MAGIC 3. Los **tokens** de entrada y salida de cada llamada.
 # MAGIC
-# MAGIC Las trazas quedan en el experimento del notebook (ícono de matraz en la barra derecha).
+# MAGIC Las trazas quedan en tu experimento del lab, `/Users/<tu correo>/lab-agentes-trazas`: el link está en la tabla de la celda de setup, al inicio del notebook.
 
 # COMMAND ----------
 

@@ -64,7 +64,8 @@ def agentbricks(*args, cwd=None, timeout=900):
     # del runtime: MLflow la necesita para configurar el tracing.
     conservar = ("DATABRICKS_ENV_VERSION", "DATABRICKS_RUNTIME_VERSION")
     entorno = {k: v for k, v in os.environ.items()
-               if k in conservar or not k.startswith(("DATABRICKS_", "SPARK", "PYSPARK"))}
+               if (k in conservar or not k.startswith(("DATABRICKS_", "SPARK", "PYSPARK")))
+               and not k.startswith("MLFLOW_EXPERIMENT")}  # el agente usa el experimento de su agent.toml
     entorno.update(DATABRICKS_HOST=HOST, DATABRICKS_TOKEN=token(), AGENTBRICKS_DISABLE_AGENT_HINT="1",
                    NO_COLOR="1", TERM="dumb", COLUMNS="110", UV_CACHE_DIR="/tmp/uv-cache",
                    PATH=f"{CARPETA_CLI}:{os.environ['PATH']}")

@@ -185,7 +185,7 @@ SCORERS = [
 # MAGIC })();
 # MAGIC </script>
 # MAGIC
-# MAGIC Cada versión del prompt es una corrida de evaluación en el experimento del notebook. Tarda ≈ 2–4 minutos por versión.
+# MAGIC Cada versión del prompt es una corrida de evaluación en tu experimento del lab (`/Users/<tu correo>/lab-agentes-trazas`). Tarda ≈ 2–4 minutos por versión.
 
 # COMMAND ----------
 
@@ -216,7 +216,7 @@ display(pd.DataFrame(resultados).T[[c for c in pd.DataFrame(resultados).T.column
 # MAGIC })();
 # MAGIC </script>
 # MAGIC
-# MAGIC Abre el experimento del notebook (ícono de matraz) → pestaña **Evaluations**. Compara las dos corridas pregunta por pregunta: para cada fallo, el judge explica **por qué**. Busca en particular las preguntas de SLA: ¿el agente fue a Genie o intentó contestar con la función de incidencias abiertas?
+# MAGIC Abre tu experimento del lab (link en la celda de setup) → pestaña **Evaluations**. Compara las dos corridas pregunta por pregunta: para cada fallo, el judge explica **por qué**. Busca en particular las preguntas de SLA: ¿el agente fue a Genie o intentó contestar con la función de incidencias abiertas?
 
 # COMMAND ----------
 
